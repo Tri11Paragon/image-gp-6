@@ -1,0 +1,46 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "/home/brett/Documents/code/c++/image-gp-6/cmake-build-release/_deps/threatexchange-subbuild/CMakeFiles/threatexchange-populate"
+		},
+		{
+			"file" : "/home/brett/Documents/code/c++/image-gp-6/cmake-build-release/_deps/threatexchange-subbuild/CMakeFiles/threatexchange-populate.rule"
+		},
+		{
+			"file" : "/home/brett/Documents/code/c++/image-gp-6/cmake-build-release/_deps/threatexchange-subbuild/CMakeFiles/threatexchange-populate-complete.rule"
+		},
+		{
+			"file" : "/home/brett/Documents/code/c++/image-gp-6/cmake-build-release/_deps/threatexchange-subbuild/threatexchange-populate-prefix/src/threatexchange-populate-stamp/threatexchange-populate-build.rule"
+		},
+		{
+			"file" : "/home/brett/Documents/code/c++/image-gp-6/cmake-build-release/_deps/threatexchange-subbuild/threatexchange-populate-prefix/src/threatexchange-populate-stamp/threatexchange-populate-configure.rule"
+		},
+		{
+			"file" : "/home/brett/Documents/code/c++/image-gp-6/cmake-build-release/_deps/threatexchange-subbuild/threatexchange-populate-prefix/src/threatexchange-populate-stamp/threatexchange-populate-download.rule"
+		},
+		{
+			"file" : "/home/brett/Documents/code/c++/image-gp-6/cmake-build-release/_deps/threatexchange-subbuild/threatexchange-populate-prefix/src/threatexchange-populate-stamp/threatexchange-populate-install.rule"
+		},
+		{
+			"file" : "/home/brett/Documents/code/c++/image-gp-6/cmake-build-release/_deps/threatexchange-subbuild/threatexchange-populate-prefix/src/threatexchange-populate-stamp/threatexchange-populate-mkdir.rule"
+		},
+		{
+			"file" : "/home/brett/Documents/code/c++/image-gp-6/cmake-build-release/_deps/threatexchange-subbuild/threatexchange-populate-prefix/src/threatexchange-populate-stamp/threatexchange-populate-patch.rule"
+		},
+		{
+			"file" : "/home/brett/Documents/code/c++/image-gp-6/cmake-build-release/_deps/threatexchange-subbuild/threatexchange-populate-prefix/src/threatexchange-populate-stamp/threatexchange-populate-test.rule"
+		},
+		{
+			"file" : "/home/brett/Documents/code/c++/image-gp-6/cmake-build-release/_deps/threatexchange-subbuild/threatexchange-populate-prefix/src/threatexchange-populate-stamp/threatexchange-populate-update.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"threatexchange-populate"
+		],
+		"name" : "threatexchange-populate"
+	}
+}

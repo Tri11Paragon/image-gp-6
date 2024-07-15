@@ -1,0 +1,399 @@
+{
+	"configurations" : 
+	[
+		{
+			"directories" : 
+			[
+				{
+					"build" : ".",
+					"childIndexes" : 
+					[
+						1
+					],
+					"hasInstallRule" : true,
+					"jsonFile" : "directory-.-RelWithDebInfo-f5ebdc15457944623624.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.25"
+					},
+					"projectIndex" : 0,
+					"source" : ".",
+					"targetIndexes" : 
+					[
+						30
+					]
+				},
+				{
+					"build" : "lib/blt-gp",
+					"childIndexes" : 
+					[
+						2
+					],
+					"hasInstallRule" : true,
+					"jsonFile" : "directory-lib.blt-gp-RelWithDebInfo-afede414604edaf9727c.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.25"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 1,
+					"source" : "lib/blt-gp",
+					"targetIndexes" : 
+					[
+						1,
+						2,
+						3,
+						4,
+						5,
+						6,
+						7,
+						8,
+						9,
+						10,
+						11,
+						12,
+						13,
+						14,
+						15,
+						16,
+						17,
+						18,
+						19,
+						20,
+						21,
+						22,
+						23,
+						24,
+						25,
+						26,
+						27,
+						28,
+						29
+					]
+				},
+				{
+					"build" : "lib/blt-gp/lib/blt",
+					"hasInstallRule" : true,
+					"jsonFile" : "directory-lib.blt-gp.lib.blt-RelWithDebInfo-53db016bfeb71f06a61b.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.20"
+					},
+					"parentIndex" : 1,
+					"projectIndex" : 2,
+					"source" : "lib/blt-gp/lib/blt",
+					"targetIndexes" : 
+					[
+						0
+					]
+				}
+			],
+			"name" : "RelWithDebInfo",
+			"projects" : 
+			[
+				{
+					"childIndexes" : 
+					[
+						1
+					],
+					"directoryIndexes" : 
+					[
+						0
+					],
+					"name" : "image-gp-6",
+					"targetIndexes" : 
+					[
+						30
+					]
+				},
+				{
+					"childIndexes" : 
+					[
+						2
+					],
+					"directoryIndexes" : 
+					[
+						1
+					],
+					"name" : "blt-gp",
+					"parentIndex" : 0,
+					"targetIndexes" : 
+					[
+						1,
+						2,
+						3,
+						4,
+						5,
+						6,
+						7,
+						8,
+						9,
+						10,
+						11,
+						12,
+						13,
+						14,
+						15,
+						16,
+						17,
+						18,
+						19,
+						20,
+						21,
+						22,
+						23,
+						24,
+						25,
+						26,
+						27,
+						28,
+						29
+					]
+				},
+				{
+					"directoryIndexes" : 
+					[
+						2
+					],
+					"name" : "BLT",
+					"parentIndex" : 1,
+					"targetIndexes" : 
+					[
+						0
+					]
+				}
+			],
+			"targets" : 
+			[
+				{
+					"directoryIndex" : 2,
+					"id" : "BLT::@94879f93dddfdb62440a",
+					"jsonFile" : "target-BLT-RelWithDebInfo-fa6a66372e4a06bd6ac3.json",
+					"name" : "BLT",
+					"projectIndex" : 2
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "Continuous::@c91d6c57bc117554146c",
+					"jsonFile" : "target-Continuous-RelWithDebInfo-c43e99aa4fb34761ee31.json",
+					"name" : "Continuous",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "ContinuousBuild::@c91d6c57bc117554146c",
+					"jsonFile" : "target-ContinuousBuild-RelWithDebInfo-ef3e352f69280ca5733e.json",
+					"name" : "ContinuousBuild",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "ContinuousConfigure::@c91d6c57bc117554146c",
+					"jsonFile" : "target-ContinuousConfigure-RelWithDebInfo-3ca14fab79010fee6953.json",
+					"name" : "ContinuousConfigure",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "ContinuousCoverage::@c91d6c57bc117554146c",
+					"jsonFile" : "target-ContinuousCoverage-RelWithDebInfo-b5ff3eac4a43b6795df2.json",
+					"name" : "ContinuousCoverage",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "ContinuousMemCheck::@c91d6c57bc117554146c",
+					"jsonFile" : "target-ContinuousMemCheck-RelWithDebInfo-37d1856c2d2d9a99bd68.json",
+					"name" : "ContinuousMemCheck",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "ContinuousStart::@c91d6c57bc117554146c",
+					"jsonFile" : "target-ContinuousStart-RelWithDebInfo-802f1a4ead8c302e709d.json",
+					"name" : "ContinuousStart",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "ContinuousSubmit::@c91d6c57bc117554146c",
+					"jsonFile" : "target-ContinuousSubmit-RelWithDebInfo-4f32daf8e39981143ffc.json",
+					"name" : "ContinuousSubmit",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "ContinuousTest::@c91d6c57bc117554146c",
+					"jsonFile" : "target-ContinuousTest-RelWithDebInfo-6427161584d1bd4f3186.json",
+					"name" : "ContinuousTest",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "ContinuousUpdate::@c91d6c57bc117554146c",
+					"jsonFile" : "target-ContinuousUpdate-RelWithDebInfo-d2fda149a1a00fb59599.json",
+					"name" : "ContinuousUpdate",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "Experimental::@c91d6c57bc117554146c",
+					"jsonFile" : "target-Experimental-RelWithDebInfo-29c35c72e4253899b402.json",
+					"name" : "Experimental",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "ExperimentalBuild::@c91d6c57bc117554146c",
+					"jsonFile" : "target-ExperimentalBuild-RelWithDebInfo-c4f42dfb082f1f0b365b.json",
+					"name" : "ExperimentalBuild",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "ExperimentalConfigure::@c91d6c57bc117554146c",
+					"jsonFile" : "target-ExperimentalConfigure-RelWithDebInfo-26257171b592d6c672a4.json",
+					"name" : "ExperimentalConfigure",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "ExperimentalCoverage::@c91d6c57bc117554146c",
+					"jsonFile" : "target-ExperimentalCoverage-RelWithDebInfo-d8bd5ded69e6203109b1.json",
+					"name" : "ExperimentalCoverage",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "ExperimentalMemCheck::@c91d6c57bc117554146c",
+					"jsonFile" : "target-ExperimentalMemCheck-RelWithDebInfo-30d4c56eaf73362a34d3.json",
+					"name" : "ExperimentalMemCheck",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "ExperimentalStart::@c91d6c57bc117554146c",
+					"jsonFile" : "target-ExperimentalStart-RelWithDebInfo-76519d8b593c6241c501.json",
+					"name" : "ExperimentalStart",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "ExperimentalSubmit::@c91d6c57bc117554146c",
+					"jsonFile" : "target-ExperimentalSubmit-RelWithDebInfo-278fa1b9f723259ff11b.json",
+					"name" : "ExperimentalSubmit",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "ExperimentalTest::@c91d6c57bc117554146c",
+					"jsonFile" : "target-ExperimentalTest-RelWithDebInfo-71ebba221e7fb1d80fbd.json",
+					"name" : "ExperimentalTest",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "ExperimentalUpdate::@c91d6c57bc117554146c",
+					"jsonFile" : "target-ExperimentalUpdate-RelWithDebInfo-a90f3ced033c92f0b809.json",
+					"name" : "ExperimentalUpdate",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "Nightly::@c91d6c57bc117554146c",
+					"jsonFile" : "target-Nightly-RelWithDebInfo-c62a1579920e67db566c.json",
+					"name" : "Nightly",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "NightlyBuild::@c91d6c57bc117554146c",
+					"jsonFile" : "target-NightlyBuild-RelWithDebInfo-c77b0bd9329ac57c7167.json",
+					"name" : "NightlyBuild",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "NightlyConfigure::@c91d6c57bc117554146c",
+					"jsonFile" : "target-NightlyConfigure-RelWithDebInfo-36e17829edb74a023f06.json",
+					"name" : "NightlyConfigure",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "NightlyCoverage::@c91d6c57bc117554146c",
+					"jsonFile" : "target-NightlyCoverage-RelWithDebInfo-b32c4f4a2c98c319e590.json",
+					"name" : "NightlyCoverage",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "NightlyMemCheck::@c91d6c57bc117554146c",
+					"jsonFile" : "target-NightlyMemCheck-RelWithDebInfo-1b2f8d022bcffe5803b0.json",
+					"name" : "NightlyMemCheck",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "NightlyMemoryCheck::@c91d6c57bc117554146c",
+					"jsonFile" : "target-NightlyMemoryCheck-RelWithDebInfo-4f2d96b34dc7a25d944d.json",
+					"name" : "NightlyMemoryCheck",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "NightlyStart::@c91d6c57bc117554146c",
+					"jsonFile" : "target-NightlyStart-RelWithDebInfo-cf3fa5254bd3307ed2af.json",
+					"name" : "NightlyStart",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "NightlySubmit::@c91d6c57bc117554146c",
+					"jsonFile" : "target-NightlySubmit-RelWithDebInfo-8773c98de4b3af841f3f.json",
+					"name" : "NightlySubmit",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "NightlyTest::@c91d6c57bc117554146c",
+					"jsonFile" : "target-NightlyTest-RelWithDebInfo-3139a9539ff4d094d29f.json",
+					"name" : "NightlyTest",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "NightlyUpdate::@c91d6c57bc117554146c",
+					"jsonFile" : "target-NightlyUpdate-RelWithDebInfo-2be5e63187ed56e6da31.json",
+					"name" : "NightlyUpdate",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "blt-gp::@c91d6c57bc117554146c",
+					"jsonFile" : "target-blt-gp-RelWithDebInfo-3076a07ef40f1cb54260.json",
+					"name" : "blt-gp",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "image-gp-6::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-image-gp-6-RelWithDebInfo-d1691b385cf821d5db41.json",
+					"name" : "image-gp-6",
+					"projectIndex" : 0
+				}
+			]
+		}
+	],
+	"kind" : "codemodel",
+	"paths" : 
+	{
+		"build" : "/home/brett/Documents/code/c++/image-gp-6/cmake-build-relwithdebinfo",
+		"source" : "/home/brett/Documents/code/c++/image-gp-6"
+	},
+	"version" : 
+	{
+		"major" : 2,
+		"minor" : 4
+	}
+}
