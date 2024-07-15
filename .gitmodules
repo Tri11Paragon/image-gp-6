@@ -10,3 +10,6 @@
 [submodule "lib/stb"]
 	path = lib/stb
 	url = https://github.com/nothings/stb
+[submodule "lib/blt-graphics"]
+	path = lib/blt-graphics
+	url = https://git.tpgc.me/tri11paragon/BLT-With-Graphics-Template.git

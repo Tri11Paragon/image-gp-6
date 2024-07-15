@@ -15,11 +15,6 @@
  *  You should have received a copy of the GNU General Public License
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-#define STB_IMAGE_RESIZE_IMPLEMENTATION
-#define STB_IMAGE_IMPLEMENTATION
-#define STB_IMAGE_WRITE_IMPLEMENTATION
-#define STB_PERLIN_IMPLEMENTATION
-
 #include <blt/gp/program.h>
 #include <blt/profiling/profiler_v2.h>
 #include <blt/gp/tree.h>
@@ -29,8 +24,12 @@
 #include <stb_image_resize2.h>
 #include <stb_image_write.h>
 #include <stb_perlin.h>
+#include <blt/gfx/window.h>
+#include "blt/gfx/renderer/resource_manager.h"
+#include "blt/gfx/renderer/batch_2d_renderer.h"
+#include "blt/gfx/renderer/camera.h"
+#include <imgui.h>
 #include "opencv2/imgcodecs.hpp"
-#include "opencv2/highgui.hpp"
 #include "opencv2/imgproc.hpp"
 #include <random>
 
@@ -39,6 +38,11 @@ static constexpr long IMAGE_SIZE = 128;
 static constexpr blt::size_t CHANNELS = 3;
 static constexpr blt::size_t DATA_SIZE = IMAGE_SIZE * IMAGE_SIZE;
 
+blt::gfx::matrix_state_manager global_matrices;
+blt::gfx::resource_manager resources;
+blt::gfx::batch_renderer_2d renderer_2d(resources, global_matrices);
+blt::gfx::first_person_camera_2d camera;
+
 struct context
 {
     float x, y;
@@ -46,50 +50,55 @@ struct context
 
 struct image_t
 {
-    std::array<blt::u8, DATA_SIZE> image_data;
+    std::array<blt::u8, DATA_SIZE> gray_data;
 };
 
 struct full_image_t
 {
-    std::array<blt::u8, DATA_SIZE * CHANNELS> image_data;
+    std::array<blt::u8, DATA_SIZE * CHANNELS> rgb_data;
     
     void load(const std::string& path)
     {
         int width, height, channels;
         auto data = stbi_load(path.c_str(), &width, &height, &channels, CHANNELS);
         
-        stbir_resize_uint8_linear(data, width, height, 0, image_data.data(), IMAGE_SIZE, IMAGE_SIZE, 0, static_cast<stbir_pixel_layout>(CHANNELS));
+        stbir_resize_uint8_linear(data, width, height, 0, rgb_data.data(), IMAGE_SIZE, IMAGE_SIZE, 0, static_cast<stbir_pixel_layout>(CHANNELS));
         
         stbi_image_free(data);
     }
     
     void save(const std::string& str)
     {
-        stbi_write_png(str.c_str(), IMAGE_SIZE, IMAGE_SIZE, CHANNELS, image_data.data(), 0);
+        stbi_write_png(str.c_str(), IMAGE_SIZE, IMAGE_SIZE, CHANNELS, rgb_data.data(), 0);
     }
 };
 
-using fitness_data_t = std::array<image_t, 50>;
+//
+//using fitness_data_t = std::array<image_t, 50>;
+//
+//fitness_data_t fitness_red;
+//fitness_data_t fitness_green;
+//fitness_data_t fitness_blue;
+std::array<double, 64> fitness_values;
+std::array<full_image_t, 64> generation_images;
+std::vector<blt::gfx::texture_gl2D> gl_images;
 
-fitness_data_t fitness_red;
-fitness_data_t fitness_green;
-fitness_data_t fitness_blue;
 full_image_t base_data;
 full_image_t found_data;
 
 cv::Mat base_image_hsv;
 
 int h_bins = 50, s_bins = 60;
-int histSize[] = { h_bins, s_bins };
+int histSize[] = {h_bins, s_bins};
 
 // hue varies from 0 to 179, saturation from 0 to 255
-float h_ranges[] = { 0, 180 };
-float s_ranges[] = { 0, 256 };
+float h_ranges[] = {0, 180};
+float s_ranges[] = {0, 256};
 
-const float* ranges[] = { h_ranges, s_ranges };
+const float* ranges[] = {h_ranges, s_ranges};
 
 // Use the 0-th and 1-st channels
-int channels[] = { 0, 1, 2 };
+int channels[] = {0, 1, 2};
 
 cv::Mat base_image_hist;
 
@@ -100,7 +109,7 @@ blt::gp::prog_config_t config = blt::gp::prog_config_t()
         .set_max_generations(50)
         .set_mutation_chance(0.4)
         .set_crossover_chance(0.9)
-        .set_pop_size(50)
+        .set_pop_size(64)
         .set_thread_count(0);
 
 blt::gp::type_provider type_system;
@@ -230,63 +239,74 @@ inline context get_ctx(blt::size_t i)
     return ctx;
 }
 
-constexpr auto create_fitness_function(fitness_data_t& fitness_data, blt::size_t channel)
+constexpr auto create_fitness_function(blt::size_t channel)
 {
-    return [&fitness_data, channel](blt::gp::tree_t& current_tree, blt::gp::fitness_t& fitness, blt::size_t in) {
-        auto& v = fitness_data[in];
+    return [channel](blt::gp::tree_t& current_tree, blt::gp::fitness_t& fitness, blt::size_t in) {
+        auto& v = generation_images[in];
         for (blt::size_t i = 0; i < DATA_SIZE; i++)
         {
             context ctx = get_ctx(i);
-            v.image_data[i] = static_cast<blt::u8>(current_tree.get_evaluation_value<float>(&ctx) * 255);
-            
-            auto dist = static_cast<float>(v.image_data[i]) - static_cast<float>(base_data.image_data[i * CHANNELS + channel]);
-            
-            fitness.raw_fitness += std::sqrt(dist * dist);
+            v.rgb_data[i * CHANNELS + channel] = static_cast<blt::u8>(current_tree.get_evaluation_value<float>(&ctx) * 255);
         }
-        BLT_TRACE("Hello1");
-        cv::Mat img(IMAGE_SIZE, IMAGE_SIZE, CV_8UC3, v.image_data.data());
-        BLT_TRACE("Hello2");
-        cv::Mat img_hsv;
-        BLT_TRACE("Hello3");
-        cv::cvtColor(img, img_hsv, cv::COLOR_RGB2HSV);
-        BLT_TRACE("Hello4");
-        cv::Mat hist;
-        BLT_TRACE("Hello5");
-        cv::calcHist(&img_hsv, 1, channels, cv::Mat(), hist, 2, histSize, ranges, true, false);
-        BLT_TRACE("Hello6");
-        cv::normalize(hist, hist, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
-        BLT_TRACE("Hello7");
-        
-        auto comp = cv::compareHist(base_image_hist, hist, cv::HISTCMP_CORREL);
-        
-        fitness.standardized_fitness = fitness.raw_fitness / IMAGE_SIZE;
-        fitness.adjusted_fitness = (1.0 / (1.0 + fitness.standardized_fitness)) * comp;
+        fitness.raw_fitness = fitness_values[in];
+        fitness.standardized_fitness = fitness.raw_fitness;
+        fitness.adjusted_fitness = (1.0 / (1.0 + fitness.standardized_fitness));
+//        auto& v = fitness_data[in];
+//        for (blt::size_t i = 0; i < DATA_SIZE; i++)
+//        {
+//            context ctx = get_ctx(i);
+//            v.gray_data[i] = static_cast<blt::u8>(current_tree.get_evaluation_value<float>(&ctx) * 255);
+//
+//            auto dist = static_cast<float>(v.gray_data[i]) - static_cast<float>(base_data.rgb_data[i * CHANNELS + channel]);
+//
+//            fitness.raw_fitness += std::sqrt(dist * dist);
+//        }
+//        cv::Mat img(IMAGE_SIZE, IMAGE_SIZE, CV_8UC1, v.gray_data.data());
+//        cv::Mat img_rgb;
+//        cv::Mat img_hsv;
+//        cv::cvtColor(img, img_rgb, cv::COLOR_GRAY2RGB);
+//        cv::cvtColor(img_rgb, img_hsv, cv::COLOR_RGB2HSV);
+//        cv::Mat hist;
+//        cv::calcHist(&img_hsv, 1, channels, cv::Mat(), hist, 2, histSize, ranges, true, false);
+//        cv::normalize(hist, hist, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
+//
+//        auto comp = 1.0 - cv::compareHist(base_image_hist, hist, cv::HISTCMP_CHISQR);
+//
+//        fitness.raw_fitness *= comp;
+
+//        fitness.standardized_fitness = fitness.raw_fitness / IMAGE_SIZE;
+//        fitness.adjusted_fitness = (1.0 / (1.0 + fitness.standardized_fitness));
     };
 }
 
-constexpr auto fitness_function_red = create_fitness_function(fitness_red, 0);
+constexpr auto fitness_function_red = create_fitness_function(0);
 
-constexpr auto fitness_function_green = create_fitness_function(fitness_green, 1);
+constexpr auto fitness_function_green = create_fitness_function(1);
 
-constexpr auto fitness_function_blue = create_fitness_function(fitness_blue, 2);
+constexpr auto fitness_function_blue = create_fitness_function(2);
+
+void execute_generation(blt::gp::gp_program& program)
+{
+    BLT_TRACE("------------{Begin Generation %ld}------------", program.get_current_generation());
+    BLT_START_INTERVAL("Image Test", "Gen");
+    program.create_next_generation(blt::gp::select_tournament_t{}, blt::gp::select_tournament_t{}, blt::gp::select_tournament_t{});
+    BLT_END_INTERVAL("Image Test", "Gen");
+    BLT_TRACE("Move to next generation");
+    BLT_START_INTERVAL("Image Test", "Fitness");
+    program.next_generation();
+    BLT_TRACE("Evaluate Fitness");
+    program.evaluate_fitness();
+    BLT_END_INTERVAL("Image Test", "Fitness");
+    BLT_TRACE("----------------------------------------------");
+    std::cout << std::endl;
+}
 
 void evaluate_program(blt::gp::gp_program& program)
 {
     BLT_DEBUG("Begin Generation Loop");
     while (!program.should_terminate())
     {
-        BLT_TRACE("------------{Begin Generation %ld}------------", program.get_current_generation());
-        BLT_START_INTERVAL("Image Test", "Gen");
-        program.create_next_generation(blt::gp::select_tournament_t{}, blt::gp::select_tournament_t{}, blt::gp::select_tournament_t{});
-        BLT_END_INTERVAL("Image Test", "Gen");
-        BLT_TRACE("Move to next generation");
-        BLT_START_INTERVAL("Image Test", "Fitness");
-        program.next_generation();
-        BLT_TRACE("Evaluate Fitness");
-        program.evaluate_fitness();
-        BLT_END_INTERVAL("Image Test", "Fitness");
-        BLT_TRACE("----------------------------------------------");
-        std::cout << std::endl;
+        execute_generation(program);
     }
 }
 
@@ -332,9 +352,9 @@ void write_tree(blt::size_t index, blt::size_t best_red, blt::size_t best_blue, 
     
     for (blt::size_t i = 0; i < DATA_SIZE; i++)
     {
-        found_data.image_data[i * CHANNELS] = fitness_red[best_red].image_data[i];
-        found_data.image_data[i * CHANNELS + 1] = fitness_green[best_green].image_data[i];
-        found_data.image_data[i * CHANNELS + 2] = fitness_blue[best_blue].image_data[i];
+        found_data.rgb_data[i * CHANNELS] = generation_images[best_red].rgb_data[i * CHANNELS];
+        found_data.rgb_data[i * CHANNELS + 1] = generation_images[best_green].rgb_data[i * CHANNELS + 1];
+        found_data.rgb_data[i * CHANNELS + 2] = generation_images[best_blue].rgb_data[i * CHANNELS + 2];
     }
     
     found_data.save("best_image_" + std::to_string(index) + ".png");
@@ -386,19 +406,27 @@ void make_operator_image(T op, Args... args)
     stbi_write_png((blt::type_string<T> + ".png").c_str(), IMAGE_SIZE, IMAGE_SIZE, CHANNELS, value.get(), 0);
 }
 
-int main()
+void init(const blt::gfx::window_data&)
 {
+    using namespace blt::gfx;
+    
+    for (blt::size_t i = 0; i < config.population_size; i++)
+    {
+        gl_images.emplace_back(IMAGE_SIZE, IMAGE_SIZE, GL_RGB8);
+        resources.set(std::to_string(i), &gl_images.back());
+    }
+    
     BLT_INFO("Starting BLT-GP Image Test");
     BLT_INFO("Using Seed: %ld", SEED);
     BLT_START_INTERVAL("Image Test", "Main");
     BLT_DEBUG("Setup Base Image");
     base_data.load("../Rolex_De_Grande_-_Joo.png");
     
-    cv::Mat base_image_mat{IMAGE_SIZE, IMAGE_SIZE, CV_8UC3, base_data.image_data.data()};
+    cv::Mat base_image_mat{IMAGE_SIZE, IMAGE_SIZE, CV_8UC3, base_data.rgb_data.data()};
     cv::cvtColor(base_image_mat, base_image_hsv, cv::COLOR_RGB2HSV);
     
-    cv::calcHist( &base_image_hsv, 1, channels, cv::Mat(), base_image_hist, 2, histSize, ranges, true, false );
-    cv::normalize( base_image_hist, base_image_hist, 0, 1, cv::NORM_MINMAX, -1, cv::Mat() );
+    cv::calcHist(&base_image_hsv, 1, channels, cv::Mat(), base_image_hist, 2, histSize, ranges, true, false);
+    cv::normalize(base_image_hist, base_image_hist, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
     
     BLT_DEBUG("Setup Types and Operators");
     type_system.register_type<float>();
@@ -411,10 +439,55 @@ int main()
     program_red.generate_population(type_system.get_type<float>().id(), fitness_function_red);
     program_green.generate_population(type_system.get_type<float>().id(), fitness_function_green);
     program_blue.generate_population(type_system.get_type<float>().id(), fitness_function_blue);
+
+//    evaluate_program(program_red);
+//    evaluate_program(program_green);
+//    evaluate_program(program_blue);
     
-    evaluate_program(program_red);
-    evaluate_program(program_green);
-    evaluate_program(program_blue);
+    global_matrices.create_internals();
+    resources.load_resources();
+    renderer_2d.create();
+}
+
+void update(const blt::gfx::window_data& data)
+{
+    global_matrices.update_perspectives(data.width, data.height, 90, 0.1, 2000);
+    
+    camera.update();
+    camera.update_view(global_matrices);
+    global_matrices.update();
+    
+    for (blt::size_t i = 0; i < config.population_size; i++)
+        gl_images[i].upload(generation_images[i].rgb_data.data(), IMAGE_SIZE, IMAGE_SIZE, GL_RGB);
+    
+    if (ImGui::Begin("Program Control"))
+    {
+        ImGui::Button("Run Generation");
+        if (ImGui::IsItemClicked())
+        {
+            execute_generation(program_red);
+            execute_generation(program_green);
+            execute_generation(program_blue);
+        }
+        ImGui::End();
+    }
+    
+    for (blt::size_t i = 0; i < config.population_size; i++)
+    {
+        renderer_2d.drawRectangleInternal(std::to_string(i),
+                                          {static_cast<float>(IMAGE_SIZE * i), static_cast<float>(IMAGE_SIZE * i), IMAGE_SIZE, IMAGE_SIZE});
+    }
+    
+    renderer_2d.render(data.width, data.height);
+}
+
+int main()
+{
+    blt::gfx::init(blt::gfx::window_data{"My Sexy Window", init, update}.setSyncInterval(1));
+    global_matrices.cleanup();
+    resources.cleanup();
+    renderer_2d.cleanup();
+    blt::gfx::cleanup();
     
     BLT_END_INTERVAL("Image Test", "Main");
     

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(image-gp-6 VERSION 0.0.4)
+project(image-gp-6 VERSION 0.0.5)
 
 include(FetchContent)
 
@@ -10,6 +10,7 @@ option(ENABLE_TSAN "Enable the thread data race sanitizer" OFF)
 set(CMAKE_CXX_STANDARD 17)
 
 add_subdirectory(lib/blt-gp)
+add_subdirectory(lib/blt-graphics)
 
 find_package( OpenCV REQUIRED )
 
@@ -25,7 +26,7 @@ add_executable(image-gp-6 ${PROJECT_BUILD_FILES})
 target_compile_options(image-gp-6 PRIVATE -Wall -Wextra -Wpedantic -Wno-comment)
 target_link_options(image-gp-6 PRIVATE -Wall -Wextra -Wpedantic -Wno-comment)
 
-target_link_libraries(image-gp-6 PRIVATE BLT blt-gp ${OpenCV_LIBS})
+target_link_libraries(image-gp-6 PRIVATE BLT BLT_WITH_GRAPHICS blt-gp ${OpenCV_LIBS})
 
 if (${ENABLE_ADDRSAN} MATCHES ON)
     target_compile_options(image-gp-6 PRIVATE -fsanitize=address)
