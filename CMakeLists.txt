@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(image-gp-6 VERSION 0.0.3)
+project(image-gp-6 VERSION 0.0.4)
 
 include(FetchContent)
 
@@ -11,16 +11,21 @@ set(CMAKE_CXX_STANDARD 17)
 
 add_subdirectory(lib/blt-gp)
 
+find_package( OpenCV REQUIRED )
+
 include_directories(include/)
+include_directories(lib/stb)
 include_directories(lib/ThreatExchange)
+include_directories( ${OpenCV_INCLUDE_DIRS} )
+
 file(GLOB_RECURSE PROJECT_BUILD_FILES "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
 
 add_executable(image-gp-6 ${PROJECT_BUILD_FILES})
 
-target_compile_options(image-gp-6 PRIVATE -Wall -Wextra -Werror -Wpedantic -Wno-comment)
-target_link_options(image-gp-6 PRIVATE -Wall -Wextra -Werror -Wpedantic -Wno-comment)
+target_compile_options(image-gp-6 PRIVATE -Wall -Wextra -Wpedantic -Wno-comment)
+target_link_options(image-gp-6 PRIVATE -Wall -Wextra -Wpedantic -Wno-comment)
 
-target_link_libraries(image-gp-6 PRIVATE BLT blt-gp)
+target_link_libraries(image-gp-6 PRIVATE BLT blt-gp ${OpenCV_LIBS})
 
 if (${ENABLE_ADDRSAN} MATCHES ON)
     target_compile_options(image-gp-6 PRIVATE -fsanitize=address)

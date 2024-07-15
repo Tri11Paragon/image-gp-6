@@ -7,3 +7,6 @@
 [submodule "lib/ThreatExchange"]
 	path = lib/ThreatExchange
 	url = https://github.com/facebook/ThreatExchange
+[submodule "lib/stb"]
+	path = lib/stb
+	url = https://github.com/nothings/stb
