@@ -20,6 +20,7 @@
 #include <blt/gp/tree.h>
 #include <blt/std/logging.h>
 #include <blt/std/memory_util.h>
+#include <blt/std/hashmap.h>
 #include <stb_image.h>
 #include <stb_image_resize2.h>
 #include <stb_image_write.h>
@@ -28,6 +29,7 @@
 #include "blt/gfx/renderer/resource_manager.h"
 #include "blt/gfx/renderer/batch_2d_renderer.h"
 #include "blt/gfx/renderer/camera.h"
+#include "blt/gfx/raycast.h"
 #include <imgui.h>
 #include "opencv2/imgcodecs.hpp"
 #include "opencv2/imgproc.hpp"
@@ -35,6 +37,8 @@
 
 static const blt::u64 SEED = std::random_device()();
 static constexpr long IMAGE_SIZE = 128;
+static constexpr long IMAGE_PADDING = 16;
+static constexpr long POP_SIZE = 9;
 static constexpr blt::size_t CHANNELS = 3;
 static constexpr blt::size_t DATA_SIZE = IMAGE_SIZE * IMAGE_SIZE;
 
@@ -46,11 +50,6 @@ blt::gfx::first_person_camera_2d camera;
 struct context
 {
     float x, y;
-};
-
-struct image_t
-{
-    std::array<blt::u8, DATA_SIZE> gray_data;
 };
 
 struct full_image_t
@@ -74,14 +73,13 @@ struct full_image_t
 };
 
 //
-//using fitness_data_t = std::array<image_t, 50>;
+//using fitness_data_t = std::array<image_t, POP_SIZE>;
 //
 //fitness_data_t fitness_red;
 //fitness_data_t fitness_green;
 //fitness_data_t fitness_blue;
-std::array<double, 64> fitness_values;
-std::array<full_image_t, 64> generation_images;
-std::vector<blt::gfx::texture_gl2D> gl_images;
+std::array<double, POP_SIZE> fitness_values;
+std::array<full_image_t, POP_SIZE> generation_images;
 
 full_image_t base_data;
 full_image_t found_data;
@@ -102,14 +100,18 @@ int channels[] = {0, 1, 2};
 
 cv::Mat base_image_hist;
 
+blt::size_t selected_image = 0;
+blt::size_t last_fitness = 0;
+
 blt::gp::prog_config_t config = blt::gp::prog_config_t()
         .set_initial_min_tree_size(2)
         .set_initial_max_tree_size(6)
         .set_elite_count(1)
         .set_max_generations(50)
-        .set_mutation_chance(0.4)
-        .set_crossover_chance(0.9)
-        .set_pop_size(64)
+        .set_mutation_chance(0.8)
+        .set_crossover_chance(1.0)
+        .set_reproduction_chance(0)
+        .set_pop_size(POP_SIZE)
         .set_thread_count(0);
 
 blt::gp::type_provider type_system;
@@ -239,6 +241,15 @@ inline context get_ctx(blt::size_t i)
     return ctx;
 }
 
+inline context get_pop_ctx(blt::size_t i)
+{
+    auto const sq = static_cast<float>(std::sqrt(POP_SIZE));
+    context ctx{};
+    ctx.y = std::floor(static_cast<float>(i) / static_cast<float>(sq));
+    ctx.x = static_cast<float>(i) - (ctx.y * sq);
+    return ctx;
+}
+
 constexpr auto create_fitness_function(blt::size_t channel)
 {
     return [channel](blt::gp::tree_t& current_tree, blt::gp::fitness_t& fitness, blt::size_t in) {
@@ -289,7 +300,8 @@ void execute_generation(blt::gp::gp_program& program)
 {
     BLT_TRACE("------------{Begin Generation %ld}------------", program.get_current_generation());
     BLT_START_INTERVAL("Image Test", "Gen");
-    program.create_next_generation(blt::gp::select_tournament_t{}, blt::gp::select_tournament_t{}, blt::gp::select_tournament_t{});
+    auto sel = blt::gp::select_tournament_t{};
+    program.create_next_generation(sel, sel, sel, blt::gp::non_deterministic_next_pop_creator<decltype(sel), decltype(sel), decltype(sel)>);
     BLT_END_INTERVAL("Image Test", "Gen");
     BLT_TRACE("Move to next generation");
     BLT_START_INTERVAL("Image Test", "Fitness");
@@ -411,10 +423,7 @@ void init(const blt::gfx::window_data&)
     using namespace blt::gfx;
     
     for (blt::size_t i = 0; i < config.population_size; i++)
-    {
-        gl_images.emplace_back(IMAGE_SIZE, IMAGE_SIZE, GL_RGB8);
-        resources.set(std::to_string(i), &gl_images.back());
-    }
+        resources.set(std::to_string(i), new texture_gl2D(IMAGE_SIZE, IMAGE_SIZE, GL_RGB8));
     
     BLT_INFO("Starting BLT-GP Image Test");
     BLT_INFO("Using Seed: %ld", SEED);
@@ -453,13 +462,10 @@ void update(const blt::gfx::window_data& data)
 {
     global_matrices.update_perspectives(data.width, data.height, 90, 0.1, 2000);
     
-    camera.update();
-    camera.update_view(global_matrices);
-    global_matrices.update();
-    
     for (blt::size_t i = 0; i < config.population_size; i++)
-        gl_images[i].upload(generation_images[i].rgb_data.data(), IMAGE_SIZE, IMAGE_SIZE, GL_RGB);
+        resources.get(std::to_string(i)).value()->upload(generation_images[i].rgb_data.data(), IMAGE_SIZE, IMAGE_SIZE, GL_RGB);
     
+    ImGui::SetNextWindowSize(ImVec2(350, 512), ImGuiCond_Once);
     if (ImGui::Begin("Program Control"))
     {
         ImGui::Button("Run Generation");
@@ -468,22 +474,81 @@ void update(const blt::gfx::window_data& data)
             execute_generation(program_red);
             execute_generation(program_green);
             execute_generation(program_blue);
+            for (auto& f : fitness_values)
+                f = 0;
+            last_fitness = 0;
         }
+        ImGui::Button("Write Best");
+        if (ImGui::IsItemClicked())
+            write_results();
+        ImGui::Text("Selected Image: %ld", selected_image);
+        ImGui::InputDouble("Fitness Value", &fitness_values[selected_image], 1.0, 10);
         ImGui::End();
     }
     
+    const auto mouse_pos = blt::make_vec2(blt::gfx::calculateRay2D(data.width, data.height, global_matrices.getScale2D(), global_matrices.getView2D(),
+                                                                   global_matrices.getOrtho()));
+    
+    double max_fitness = 0;
+    for (blt::size_t i = 0; i < config.population_size; i++) {
+        if (fitness_values[i] > max_fitness)
+            max_fitness = fitness_values[i];
+        }
+    
     for (blt::size_t i = 0; i < config.population_size; i++)
     {
-        renderer_2d.drawRectangleInternal(std::to_string(i),
-                                          {static_cast<float>(IMAGE_SIZE * i), static_cast<float>(IMAGE_SIZE * i), IMAGE_SIZE, IMAGE_SIZE});
+        auto ctx = get_pop_ctx(i);
+        float x = ctx.x * IMAGE_SIZE + ctx.x * IMAGE_PADDING;
+        float y = ctx.y * IMAGE_SIZE + ctx.y * IMAGE_PADDING;
+        
+        auto pos = blt::vec2(x, y);
+        auto dist = pos - mouse_pos;
+        auto p_dist = blt::vec2(std::abs(dist.x()), std::abs(dist.y()));
+        
+        constexpr auto HALF_SIZE = IMAGE_SIZE / 2.0f;
+        if (p_dist.x() < HALF_SIZE && p_dist.y() < HALF_SIZE)
+        {
+            renderer_2d.drawRectangleInternal(blt::make_color(0.9, 0.9, 0.3),
+                                              {x, y, IMAGE_SIZE + IMAGE_PADDING / 2.0f, IMAGE_SIZE + IMAGE_PADDING / 2.0f},
+                                              10.0f);
+            
+            auto& io = ImGui::GetIO();
+            
+            if (io.WantCaptureMouse)
+                continue;
+            
+            if (blt::gfx::mousePressedLastFrame())
+            {
+                if (blt::gfx::isKeyPressed(GLFW_KEY_LEFT_SHIFT)){
+                    fitness_values[i] = static_cast<double>(last_fitness);
+                    if (blt::gfx::mousePressedLastFrame())
+                        last_fitness++;
+                } else
+                    selected_image = i;
+            }
+        }
+        
+        renderer_2d.drawRectangleInternal(blt::make_vec4(blt::vec3(fitness_values[i] / max_fitness), 1.0),
+                                          {x, y, IMAGE_SIZE + IMAGE_PADDING / 2.0f, IMAGE_SIZE + IMAGE_PADDING / 2.0f},
+                                          5.0f);
+        
+        renderer_2d.drawRectangleInternal(blt::gfx::render_info_t::make_info(std::to_string(i)),
+                                          {x, y, IMAGE_SIZE,
+                                           IMAGE_SIZE}, 15.0f);
     }
+    
+    //BLT_TRACE("%f, %f", mouse_pos.x(), mouse_pos.y());
+    
+    camera.update();
+    camera.update_view(global_matrices);
+    global_matrices.update();
     
     renderer_2d.render(data.width, data.height);
 }
 
 int main()
 {
-    blt::gfx::init(blt::gfx::window_data{"My Sexy Window", init, update}.setSyncInterval(1));
+    blt::gfx::init(blt::gfx::window_data{"My Sexy Window", init, update, 1440, 720}.setSyncInterval(1));
     global_matrices.cleanup();
     resources.cleanup();
     renderer_2d.cleanup();
@@ -491,10 +556,7 @@ int main()
     
     BLT_END_INTERVAL("Image Test", "Main");
     
-    write_results();
     base_data.save("input.png");
-    
-    // TODO: make stats helper
     
     BLT_PRINT_PROFILE("Image Test", blt::PRINT_CYCLES | blt::PRINT_THREAD | blt::PRINT_WALL);
     
