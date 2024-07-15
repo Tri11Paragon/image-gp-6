@@ -252,14 +252,9 @@ inline context get_pop_ctx(blt::size_t i)
 
 constexpr auto create_fitness_function(blt::size_t channel)
 {
-    return [channel](blt::gp::tree_t& current_tree, blt::gp::fitness_t& fitness, blt::size_t in) {
-        auto& v = generation_images[in];
-        for (blt::size_t i = 0; i < DATA_SIZE; i++)
-        {
-            context ctx = get_ctx(i);
-            v.rgb_data[i * CHANNELS + channel] = static_cast<blt::u8>(current_tree.get_evaluation_value<float>(&ctx) * 255);
-        }
+    return [](blt::gp::tree_t&, blt::gp::fitness_t& fitness, blt::size_t in) {
         fitness.raw_fitness = fitness_values[in];
+        BLT_TRACE("Raw fitness: %lf for %ld", fitness.raw_fitness, in);
         fitness.standardized_fitness = fitness.raw_fitness;
         fitness.adjusted_fitness = (1.0 / (1.0 + fitness.standardized_fitness));
 //        auto& v = fitness_data[in];
@@ -299,26 +294,31 @@ constexpr auto fitness_function_blue = create_fitness_function(2);
 void execute_generation(blt::gp::gp_program& program)
 {
     BLT_TRACE("------------{Begin Generation %ld}------------", program.get_current_generation());
-    BLT_START_INTERVAL("Image Test", "Gen");
-    auto sel = blt::gp::select_tournament_t{};
-    program.create_next_generation(sel, sel, sel, blt::gp::non_deterministic_next_pop_creator<decltype(sel), decltype(sel), decltype(sel)>);
-    BLT_END_INTERVAL("Image Test", "Gen");
-    BLT_TRACE("Move to next generation");
-    BLT_START_INTERVAL("Image Test", "Fitness");
-    program.next_generation();
     BLT_TRACE("Evaluate Fitness");
+    BLT_START_INTERVAL("Image Test", "Fitness");
     program.evaluate_fitness();
     BLT_END_INTERVAL("Image Test", "Fitness");
+    BLT_START_INTERVAL("Image Test", "Gen");
+    auto sel = blt::gp::select_tournament_t{};
+    program.create_next_generation(sel, sel, sel);
+    BLT_END_INTERVAL("Image Test", "Gen");
+    BLT_TRACE("Move to next generation");
+    program.next_generation();
     BLT_TRACE("----------------------------------------------");
     std::cout << std::endl;
 }
 
-void evaluate_program(blt::gp::gp_program& program)
+void evaluate_generation(blt::gp::gp_program& program, blt::size_t channel)
 {
-    BLT_DEBUG("Begin Generation Loop");
-    while (!program.should_terminate())
+    BLT_DEBUG("Evaluating Images");
+    for (auto [index, ind] : blt::enumerate(program.get_current_pop().get_individuals()))
     {
-        execute_generation(program);
+        auto& v = generation_images[index];
+        for (blt::size_t i = 0; i < DATA_SIZE; i++)
+        {
+            context ctx = get_ctx(i);
+            v.rgb_data[i * CHANNELS + channel] = static_cast<blt::u8>(ind.tree.get_evaluation_value<float>(&ctx) * 255);
+        }
     }
 }
 
@@ -390,34 +390,6 @@ void write_results()
     print_stats(program_blue);
 }
 
-template<typename Arg>
-auto convert_args(context& ctx, Arg&& arg)
-{
-    if constexpr (std::is_same_v<std::remove_cv_t<std::remove_reference_t<Arg>>, context>)
-    {
-        return ctx;
-    } else
-    {
-        return std::forward<Arg>(arg);
-    }
-}
-
-template<typename... Args, typename T>
-void make_operator_image(T op, Args... args)
-{
-    auto value = std::unique_ptr<blt::u8>(new blt::u8[IMAGE_SIZE * IMAGE_SIZE * CHANNELS]);
-    
-    for (blt::size_t i = 0; i < IMAGE_SIZE * IMAGE_SIZE; i++)
-    {
-        auto ctx = get_ctx(i);
-        value.get()[i * CHANNELS] = static_cast<blt::u8>(op(convert_args(ctx, args)...) * 255);
-        value.get()[i * CHANNELS + 1] = static_cast<blt::u8>(op(convert_args(ctx, args)...) * 255);
-        value.get()[i * CHANNELS + 2] = static_cast<blt::u8>(op(convert_args(ctx, args)...) * 255);
-    }
-    
-    stbi_write_png((blt::type_string<T> + ".png").c_str(), IMAGE_SIZE, IMAGE_SIZE, CHANNELS, value.get(), 0);
-}
-
 void init(const blt::gfx::window_data&)
 {
     using namespace blt::gfx;
@@ -445,9 +417,13 @@ void init(const blt::gfx::window_data&)
     create_program<struct blue>(program_blue);
     
     BLT_DEBUG("Generate Initial Population");
-    program_red.generate_population(type_system.get_type<float>().id(), fitness_function_red);
-    program_green.generate_population(type_system.get_type<float>().id(), fitness_function_green);
-    program_blue.generate_population(type_system.get_type<float>().id(), fitness_function_blue);
+    program_red.generate_population(type_system.get_type<float>().id(), fitness_function_red, false);
+    program_green.generate_population(type_system.get_type<float>().id(), fitness_function_green, false);
+    program_blue.generate_population(type_system.get_type<float>().id(), fitness_function_blue, false);
+    
+    evaluate_generation(program_red, 0);
+    evaluate_generation(program_green, 1);
+    evaluate_generation(program_blue, 2);
 
 //    evaluate_program(program_red);
 //    evaluate_program(program_green);
@@ -474,8 +450,11 @@ void update(const blt::gfx::window_data& data)
             execute_generation(program_red);
             execute_generation(program_green);
             execute_generation(program_blue);
-            for (auto& f : fitness_values)
-                f = 0;
+            
+            evaluate_generation(program_red, 0);
+            evaluate_generation(program_green, 1);
+            evaluate_generation(program_blue, 2);
+            
             last_fitness = 0;
         }
         ImGui::Button("Write Best");
@@ -490,10 +469,11 @@ void update(const blt::gfx::window_data& data)
                                                                    global_matrices.getOrtho()));
     
     double max_fitness = 0;
-    for (blt::size_t i = 0; i < config.population_size; i++) {
+    for (blt::size_t i = 0; i < config.population_size; i++)
+    {
         if (fitness_values[i] > max_fitness)
             max_fitness = fitness_values[i];
-        }
+    }
     
     for (blt::size_t i = 0; i < config.population_size; i++)
     {
@@ -519,7 +499,8 @@ void update(const blt::gfx::window_data& data)
             
             if (blt::gfx::mousePressedLastFrame())
             {
-                if (blt::gfx::isKeyPressed(GLFW_KEY_LEFT_SHIFT)){
+                if (blt::gfx::isKeyPressed(GLFW_KEY_LEFT_SHIFT))
+                {
                     fitness_values[i] = static_cast<double>(last_fitness);
                     if (blt::gfx::mousePressedLastFrame())
                         last_fitness++;
@@ -548,6 +529,8 @@ void update(const blt::gfx::window_data& data)
 
 int main()
 {
+    for (auto& v : fitness_values)
+        v = POP_SIZE + 1;
     blt::gfx::init(blt::gfx::window_data{"My Sexy Window", init, update, 1440, 720}.setSyncInterval(1));
     global_matrices.cleanup();
     resources.cleanup();
