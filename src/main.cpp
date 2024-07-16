@@ -53,25 +53,47 @@ struct context
     float x, y;
 };
 
+inline context get_ctx(blt::size_t i)
+{
+    context ctx{};
+    ctx.y = std::floor(static_cast<float>(i) / static_cast<float>(IMAGE_SIZE * CHANNELS));
+    ctx.x = static_cast<float>(i) - (ctx.y * IMAGE_SIZE * CHANNELS);
+    return ctx;
+}
+
+inline context get_pop_ctx(blt::size_t i)
+{
+    auto const sq = static_cast<float>(std::sqrt(POP_SIZE));
+    context ctx{};
+    ctx.y = std::floor(static_cast<float>(i) / static_cast<float>(sq));
+    ctx.x = static_cast<float>(i) - (ctx.y * sq);
+    return ctx;
+}
+
 struct full_image_t
 {
-    blt::u8 rgb_data[DATA_SIZE * CHANNELS];
+    float rgb_data[DATA_SIZE * CHANNELS];
     
     full_image_t() = default;
     
     void load(const std::string& path)
     {
         int width, height, channels;
-        auto data = stbi_load(path.c_str(), &width, &height, &channels, CHANNELS);
+        auto data = stbi_loadf(path.c_str(), &width, &height, &channels, CHANNELS);
         
-        stbir_resize_uint8_linear(data, width, height, 0, rgb_data, IMAGE_SIZE, IMAGE_SIZE, 0, static_cast<stbir_pixel_layout>(CHANNELS));
+        stbir_resize_float_linear(data, width, height, 0, rgb_data, IMAGE_SIZE, IMAGE_SIZE, 0, static_cast<stbir_pixel_layout>(CHANNELS));
         
         stbi_image_free(data);
     }
     
     void save(const std::string& str)
     {
-        stbi_write_png(str.c_str(), IMAGE_SIZE, IMAGE_SIZE, CHANNELS, rgb_data, 0);
+        //stbi_write_png(str.c_str(), IMAGE_SIZE, IMAGE_SIZE, CHANNELS, rgb_data, 0);
+    }
+    
+    friend std::ostream& operator<<(std::ostream& str, const full_image_t&)
+    {
+        return str;
     }
 };
 
@@ -186,7 +208,7 @@ static blt::gp::operation_t perlin_terminal([](const context& context) {
     for (unsigned char& i : img.rgb_data)
         i = static_cast<blt::u8>(program.get_random().get_u32(0, 256.0));
     return img;
-    return ;
+    return;
 }, "perlin_term");
 static blt::gp::operation_t op_x([](const context& context) {
     return context.x;
@@ -194,23 +216,6 @@ static blt::gp::operation_t op_x([](const context& context) {
 static blt::gp::operation_t op_y([](const context& context) {
     return context.y;
 }, "y");
-
-inline context get_ctx(blt::size_t i)
-{
-    context ctx{};
-    ctx.y = std::floor(static_cast<float>(i) / static_cast<float>(IMAGE_SIZE));
-    ctx.x = static_cast<float>(i) - (ctx.y * IMAGE_SIZE);
-    return ctx;
-}
-
-inline context get_pop_ctx(blt::size_t i)
-{
-    auto const sq = static_cast<float>(std::sqrt(POP_SIZE));
-    context ctx{};
-    ctx.y = std::floor(static_cast<float>(i) / static_cast<float>(sq));
-    ctx.x = static_cast<float>(i) - (ctx.y * sq);
-    return ctx;
-}
 
 constexpr auto create_fitness_function()
 {
@@ -277,8 +282,6 @@ void init(const blt::gfx::window_data&)
     type_system.register_type<full_image_t>();
     
     blt::gp::operator_builder<context> builder{type_system};
-    builder.add_operator(perlin);
-    builder.add_operator(perlin_bumpy);
     builder.add_operator(perlin_terminal);
     
     builder.add_operator(add);
