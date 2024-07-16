@@ -38,9 +38,10 @@
 static const blt::u64 SEED = std::random_device()();
 static constexpr long IMAGE_SIZE = 128;
 static constexpr long IMAGE_PADDING = 16;
-static constexpr long POP_SIZE = 9;
+static constexpr long POP_SIZE = 50;
 static constexpr blt::size_t CHANNELS = 3;
 static constexpr blt::size_t DATA_SIZE = IMAGE_SIZE * IMAGE_SIZE;
+static constexpr blt::size_t DATA_CHANNELS_SIZE = DATA_SIZE * CHANNELS;
 
 blt::gfx::matrix_state_manager global_matrices;
 blt::gfx::resource_manager resources;
@@ -54,54 +55,29 @@ struct context
 
 struct full_image_t
 {
-    std::array<blt::u8, DATA_SIZE * CHANNELS> rgb_data;
+    blt::u8 rgb_data[DATA_SIZE * CHANNELS];
+    
+    full_image_t() = default;
     
     void load(const std::string& path)
     {
         int width, height, channels;
         auto data = stbi_load(path.c_str(), &width, &height, &channels, CHANNELS);
         
-        stbir_resize_uint8_linear(data, width, height, 0, rgb_data.data(), IMAGE_SIZE, IMAGE_SIZE, 0, static_cast<stbir_pixel_layout>(CHANNELS));
+        stbir_resize_uint8_linear(data, width, height, 0, rgb_data, IMAGE_SIZE, IMAGE_SIZE, 0, static_cast<stbir_pixel_layout>(CHANNELS));
         
         stbi_image_free(data);
     }
     
     void save(const std::string& str)
     {
-        stbi_write_png(str.c_str(), IMAGE_SIZE, IMAGE_SIZE, CHANNELS, rgb_data.data(), 0);
+        stbi_write_png(str.c_str(), IMAGE_SIZE, IMAGE_SIZE, CHANNELS, rgb_data, 0);
     }
 };
 
-//
-//using fitness_data_t = std::array<image_t, POP_SIZE>;
-//
-//fitness_data_t fitness_red;
-//fitness_data_t fitness_green;
-//fitness_data_t fitness_blue;
-std::array<double, POP_SIZE> fitness_values;
 std::array<full_image_t, POP_SIZE> generation_images;
 
-full_image_t base_data;
-full_image_t found_data;
-
-cv::Mat base_image_hsv;
-
-int h_bins = 50, s_bins = 60;
-int histSize[] = {h_bins, s_bins};
-
-// hue varies from 0 to 179, saturation from 0 to 255
-float h_ranges[] = {0, 180};
-float s_ranges[] = {0, 256};
-
-const float* ranges[] = {h_ranges, s_ranges};
-
-// Use the 0-th and 1-st channels
-int channels[] = {0, 1, 2};
-
-cv::Mat base_image_hist;
-
-blt::size_t selected_image = 0;
-blt::size_t last_fitness = 0;
+full_image_t base_image;
 
 blt::gp::prog_config_t config = blt::gp::prog_config_t()
         .set_initial_min_tree_size(2)
@@ -115,129 +91,115 @@ blt::gp::prog_config_t config = blt::gp::prog_config_t()
         .set_thread_count(0);
 
 blt::gp::type_provider type_system;
-blt::gp::gp_program program_red{type_system, SEED, config};
-blt::gp::gp_program program_green{type_system, SEED, config};
-blt::gp::gp_program program_blue{type_system, SEED, config};
+blt::gp::gp_program program{type_system, SEED, config};
 
-template<typename>
-void create_program(blt::gp::gp_program& program)
-{
-    static blt::gp::operation_t add([](float a, float b) { return a + b; }, "add");
-    static blt::gp::operation_t sub([](float a, float b) { return a - b; }, "sub");
-    static blt::gp::operation_t mul([](float a, float b) { return a * b; }, "mul");
-    static blt::gp::operation_t pro_div([](float a, float b) { return b == 0.0f ? 1.0f : a / b; }, "div");
-    static blt::gp::operation_t op_sin([](float a) { return std::sin(a); }, "sin");
-    static blt::gp::operation_t op_cos([](float a) { return std::cos(a); }, "cos");
-    static blt::gp::operation_t op_exp([](float a) { return std::exp(a); }, "exp");
-    static blt::gp::operation_t op_log([](float a) { return a == 0.0f ? 0.0f : std::log(a); }, "log");
-    static blt::gp::operation_t op_mod(
-            [](float a, float b) { return static_cast<int>(b) <= 0 ? 0.0f : static_cast<float>(static_cast<int>(a) % static_cast<int>(b)); }, "mod");
-    static blt::gp::operation_t op_b_mod(
-            [](float a, float b) {
-                return blt::mem::type_cast<int>(b) <= 0 ? 0.0f : blt::mem::type_cast<float>(
-                        blt::mem::type_cast<int>(a) % blt::mem::type_cast<int>(b));
-            }, "b_mod");
-    static blt::gp::operation_t op_v_mod(
-            [](float a, float b) {
-                return blt::mem::type_cast<int>(b) <= 0 ? 0.0f : static_cast<float>(blt::mem::type_cast<int>(a) % blt::mem::type_cast<int>(b));
-            },
-            "v_mod");
-    static blt::gp::operation_t bitwise_and([](float a, float b) {
-        return blt::mem::type_cast<float>(blt::mem::type_cast<int>(a) & blt::mem::type_cast<int>(b));
-    }, "b_and");
-    static blt::gp::operation_t bitwise_or([](float a, float b) {
-        return blt::mem::type_cast<float>(blt::mem::type_cast<int>(a) | blt::mem::type_cast<int>(b));
-    }, "b_or");
-    static blt::gp::operation_t bitwise_xor([](float a, float b) {
-        return blt::mem::type_cast<float>(blt::mem::type_cast<int>(a) ^ blt::mem::type_cast<int>(b));
-    }, "b_xor");
-    
-    static blt::gp::operation_t bw_raw_and([](float a, float b) {
-        return static_cast<float>(blt::mem::type_cast<int>(a) & blt::mem::type_cast<int>(b));
-    }, "raw_and");
-    static blt::gp::operation_t bw_raw_or([](float a, float b) {
-        return static_cast<float>(blt::mem::type_cast<int>(a) | blt::mem::type_cast<int>(b));
-    }, "raw_or");
-    static blt::gp::operation_t bw_raw_xor([](float a, float b) {
-        return static_cast<float>(blt::mem::type_cast<int>(a) ^ blt::mem::type_cast<int>(b));
-    }, "raw_xor");
-    
-    static blt::gp::operation_t value_and([](float a, float b) {
-        return static_cast<int>(a) & static_cast<int>(b);
-    }, "v_and");
-    static blt::gp::operation_t value_or([](float a, float b) {
-        return static_cast<int>(a) | static_cast<int>(b);
-    }, "v_or");
-    static blt::gp::operation_t value_xor([](float a, float b) {
-        return static_cast<int>(a) ^ static_cast<int>(b);
-    }, "v_xor");
-    
-    static blt::gp::operation_t lit([&program]() {
-        return program.get_random().get_float(0.0f, 1.0f);
-    }, "lit");
-    static blt::gp::operation_t random([&program]() {
-        return program.get_random().get_float(0.0f, 1.0f);
-    }, "random");
-    static blt::gp::operation_t perlin([](float x, float y, float z, float scale) {
-        if (scale == 0)
-            scale = 1;
-        return stb_perlin_noise3(x / scale, y / scale, z / scale, 0, 0, 0);
-    }, "perlin");
-    static blt::gp::operation_t perlin_terminal([](const context& context) {
-        return stb_perlin_noise3(context.x / IMAGE_SIZE, context.y / IMAGE_SIZE, 0.23423, 0, 0, 0);
-    }, "perlin_term");
-    static blt::gp::operation_t perlin_bumpy([](float x, float y, float z) {
-        return stb_perlin_noise3(x / 128.0f, y / 128.0f, z / 128.0f, 0, 0, 0);
-    }, "perlin_bump");
-    static blt::gp::operation_t op_x([](const context& context) {
-        return context.x;
-    }, "x");
-    static blt::gp::operation_t op_y([](const context& context) {
-        return context.y;
-    }, "y");
-    
-    blt::gp::operator_builder<context> builder{type_system};
-    builder.add_operator(perlin);
-    builder.add_operator(perlin_bumpy);
-    builder.add_operator(perlin_terminal);
-    
-    builder.add_operator(add);
-    builder.add_operator(sub);
-    builder.add_operator(mul);
-    builder.add_operator(pro_div);
-    builder.add_operator(op_sin);
-    builder.add_operator(op_cos);
-    builder.add_operator(op_exp);
-    builder.add_operator(op_log);
-//    builder.add_operator(op_mod);
-//    builder.add_operator(op_b_mod);
-    builder.add_operator(op_v_mod);
-//    builder.add_operator(bitwise_and);
-//    builder.add_operator(bitwise_or);
-//    builder.add_operator(bitwise_xor);
-//    builder.add_operator(value_and);
-//    builder.add_operator(value_or);
-//    builder.add_operator(value_xor);
-    builder.add_operator(bw_raw_and);
-    builder.add_operator(bw_raw_or);
-    builder.add_operator(bw_raw_xor);
-    
-    builder.add_operator(lit, true);
-    builder.add_operator(random);
-    builder.add_operator(op_x);
-    builder.add_operator(op_y);
-    
-    program.set_operations(builder.build());
-}
+blt::gp::operation_t add([](const full_image_t& a, const full_image_t& b) {
+    full_image_t img{};
+    for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
+        img.rgb_data[i] = a.rgb_data[i] + b.rgb_data[i];
+    return img;
+}, "add");
+blt::gp::operation_t sub([](const full_image_t& a, const full_image_t& b) {
+    full_image_t img{};
+    for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
+        img.rgb_data[i] = a.rgb_data[i] - b.rgb_data[i];
+    return img;
+}, "sub");
+blt::gp::operation_t mul([](const full_image_t& a, const full_image_t& b) {
+    full_image_t img{};
+    for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
+        img.rgb_data[i] = a.rgb_data[i] * b.rgb_data[i];
+    return img;
+}, "mul");
+blt::gp::operation_t pro_div([](const full_image_t& a, const full_image_t& b) {
+    full_image_t img{};
+    for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
+        img.rgb_data[i] = a.rgb_data[i] / (b.rgb_data[i] == 0 ? 1 : b.rgb_data[i]);
+    return img;
+}, "div");
+blt::gp::operation_t op_sin([](const full_image_t& a) {
+    full_image_t img{};
+    for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
+        img.rgb_data[i] = static_cast<blt::u8>(std::sin(static_cast<float>(a.rgb_data[i]) / 255.0f) * 255.0f);
+    return img;
+}, "sin");
+blt::gp::operation_t op_cos([](const full_image_t& a) {
+    full_image_t img{};
+    for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
+        img.rgb_data[i] = static_cast<blt::u8>(std::cos(static_cast<float>(a.rgb_data[i]) / 255.0f) * 255.0f);
+    return img;
+}, "cos");
+blt::gp::operation_t op_exp([](const full_image_t& a) {
+    full_image_t img{};
+    for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
+        img.rgb_data[i] = static_cast<blt::u8>(std::exp(static_cast<float>(a.rgb_data[i]) / 255.0f));
+    return img;
+}, "exp");
+blt::gp::operation_t op_log([](const full_image_t& a) {
+    full_image_t img{};
+    for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
+        img.rgb_data[i] = static_cast<blt::u8>(std::log(a.rgb_data[i] == 0 ? 1 : a.rgb_data[i]) * 255.0f);
+    return img;
+}, "log");
+blt::gp::operation_t op_v_mod([](const full_image_t& a, const full_image_t& b) {
+    full_image_t img{};
+    for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
+        img.rgb_data[i] = a.rgb_data[i] <= 0 ? 0 : a.rgb_data[i] % b.rgb_data[i];
+    return img;
+}, "v_mod");
+
+blt::gp::operation_t bitwise_and([](const full_image_t& a, const full_image_t& b) {
+    full_image_t img{};
+    for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
+        img.rgb_data[i] = (a.rgb_data[i] & b.rgb_data[i]);
+    return img;
+}, "and");
+
+blt::gp::operation_t bitwise_or([](const full_image_t& a, const full_image_t& b) {
+    full_image_t img{};
+    for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
+        img.rgb_data[i] = (a.rgb_data[i] | b.rgb_data[i]);
+    return img;
+}, "or");
+
+blt::gp::operation_t bitwise_xor([](const full_image_t& a, const full_image_t& b) {
+    full_image_t img{};
+    for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
+        img.rgb_data[i] = (a.rgb_data[i] ^ b.rgb_data[i]);
+    return img;
+}, "xor");
+
+blt::gp::operation_t lit([&program]() {
+    full_image_t img{};
+    for (unsigned char& i : img.rgb_data)
+        i = static_cast<blt::u8>(program.get_random().get_u32(0, 256.0));
+    return img;
+}, "lit");
+blt::gp::operation_t random_val([&program]() {
+    full_image_t img{};
+    for (unsigned char& i : img.rgb_data)
+        i = static_cast<blt::u8>(program.get_random().get_u32(0, 256.0));
+    return img;
+}, "random");
+static blt::gp::operation_t perlin_terminal([](const context& context) {
+    full_image_t img{};
+    for (unsigned char& i : img.rgb_data)
+        i = static_cast<blt::u8>(program.get_random().get_u32(0, 256.0));
+    return img;
+    return ;
+}, "perlin_term");
+static blt::gp::operation_t op_x([](const context& context) {
+    return context.x;
+}, "x");
+static blt::gp::operation_t op_y([](const context& context) {
+    return context.y;
+}, "y");
 
 inline context get_ctx(blt::size_t i)
 {
     context ctx{};
     ctx.y = std::floor(static_cast<float>(i) / static_cast<float>(IMAGE_SIZE));
     ctx.x = static_cast<float>(i) - (ctx.y * IMAGE_SIZE);
-//    ctx.x = static_cast<float>(i / IMAGE_SIZE);
-//    ctx.y = static_cast<float>(i % IMAGE_SIZE);
-//    std::cout << ctx.x << " " << ctx.y << std::endl;
     return ctx;
 }
 
@@ -250,48 +212,28 @@ inline context get_pop_ctx(blt::size_t i)
     return ctx;
 }
 
-constexpr auto create_fitness_function(blt::size_t channel)
+constexpr auto create_fitness_function()
 {
-    return [](blt::gp::tree_t&, blt::gp::fitness_t& fitness, blt::size_t in) {
-        fitness.raw_fitness = fitness_values[in];
-        BLT_TRACE("Raw fitness: %lf for %ld", fitness.raw_fitness, in);
-        fitness.standardized_fitness = fitness.raw_fitness;
+    return [](blt::gp::tree_t& current_tree, blt::gp::fitness_t& fitness, blt::size_t index) {
+        auto& v = generation_images[index];
+        fitness.raw_fitness = 0;
+        for (blt::size_t i = 0; i < DATA_SIZE; i++)
+        {
+            context ctx = get_ctx(i);
+            auto base = base_data.rgb_data[i * CHANNELS];
+            auto set = static_cast<blt::u8>(current_tree.get_evaluation_value<float>(&ctx) * 255);
+            v.rgb_data[i * CHANNELS + channel] = set;
+            auto diff = static_cast<float>(set - base);
+            fitness.raw_fitness += std::sqrt(diff * diff);
+        }
+        
+        //BLT_TRACE("Raw fitness: %lf for %ld", fitness.raw_fitness, index);
+        fitness.standardized_fitness = fitness.raw_fitness / IMAGE_SIZE;
         fitness.adjusted_fitness = (1.0 / (1.0 + fitness.standardized_fitness));
-//        auto& v = fitness_data[in];
-//        for (blt::size_t i = 0; i < DATA_SIZE; i++)
-//        {
-//            context ctx = get_ctx(i);
-//            v.gray_data[i] = static_cast<blt::u8>(current_tree.get_evaluation_value<float>(&ctx) * 255);
-//
-//            auto dist = static_cast<float>(v.gray_data[i]) - static_cast<float>(base_data.rgb_data[i * CHANNELS + channel]);
-//
-//            fitness.raw_fitness += std::sqrt(dist * dist);
-//        }
-//        cv::Mat img(IMAGE_SIZE, IMAGE_SIZE, CV_8UC1, v.gray_data.data());
-//        cv::Mat img_rgb;
-//        cv::Mat img_hsv;
-//        cv::cvtColor(img, img_rgb, cv::COLOR_GRAY2RGB);
-//        cv::cvtColor(img_rgb, img_hsv, cv::COLOR_RGB2HSV);
-//        cv::Mat hist;
-//        cv::calcHist(&img_hsv, 1, channels, cv::Mat(), hist, 2, histSize, ranges, true, false);
-//        cv::normalize(hist, hist, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
-//
-//        auto comp = 1.0 - cv::compareHist(base_image_hist, hist, cv::HISTCMP_CHISQR);
-//
-//        fitness.raw_fitness *= comp;
-
-//        fitness.standardized_fitness = fitness.raw_fitness / IMAGE_SIZE;
-//        fitness.adjusted_fitness = (1.0 / (1.0 + fitness.standardized_fitness));
     };
 }
 
-constexpr auto fitness_function_red = create_fitness_function(0);
-
-constexpr auto fitness_function_green = create_fitness_function(1);
-
-constexpr auto fitness_function_blue = create_fitness_function(2);
-
-void execute_generation(blt::gp::gp_program& program)
+void execute_generation()
 {
     BLT_TRACE("------------{Begin Generation %ld}------------", program.get_current_generation());
     BLT_TRACE("Evaluate Fitness");
@@ -308,21 +250,7 @@ void execute_generation(blt::gp::gp_program& program)
     std::cout << std::endl;
 }
 
-void evaluate_generation(blt::gp::gp_program& program, blt::size_t channel)
-{
-    BLT_DEBUG("Evaluating Images");
-    for (auto [index, ind] : blt::enumerate(program.get_current_pop().get_individuals()))
-    {
-        auto& v = generation_images[index];
-        for (blt::size_t i = 0; i < DATA_SIZE; i++)
-        {
-            context ctx = get_ctx(i);
-            v.rgb_data[i * CHANNELS + channel] = static_cast<blt::u8>(ind.tree.get_evaluation_value<float>(&ctx) * 255);
-        }
-    }
-}
-
-void print_stats(blt::gp::gp_program& program)
+void print_stats()
 {
     auto& stats = program.get_population_stats();
     BLT_INFO("Stats:");
@@ -330,64 +258,6 @@ void print_stats(blt::gp::gp_program& program)
     BLT_INFO("Best fitness: %lf", stats.best_fitness.load());
     BLT_INFO("Worst fitness: %lf", stats.worst_fitness.load());
     BLT_INFO("Overall fitness: %lf", stats.overall_fitness.load());
-}
-
-void write_tree_large(int image_size, blt::size_t index, blt::size_t best_red, blt::size_t best_blue, blt::size_t best_green)
-{
-    auto value = std::unique_ptr<blt::u8>(new blt::u8[image_size * image_size * CHANNELS]);
-    
-    BLT_TRACE("Writing large image of index %ld", index);
-    auto& red = program_red.get_current_pop().get_individuals()[best_red].tree;
-    auto& green = program_green.get_current_pop().get_individuals()[best_green].tree;
-    auto& blue = program_blue.get_current_pop().get_individuals()[best_blue].tree;
-    
-    for (blt::size_t i = 0; i < static_cast<blt::size_t>(image_size) * image_size; i++)
-    {
-        auto ctx = get_ctx(i);
-        value.get()[i * CHANNELS] = static_cast<blt::u8>(red.get_evaluation_value<float>(&ctx) * 255);
-        value.get()[i * CHANNELS + 1] = static_cast<blt::u8>(green.get_evaluation_value<float>(&ctx) * 255);
-        value.get()[i * CHANNELS + 2] = static_cast<blt::u8>(blue.get_evaluation_value<float>(&ctx) * 255);
-    }
-    
-    stbi_write_png(("best_image_large_" + std::to_string(index) + ".png").c_str(), image_size, image_size, CHANNELS, value.get(), 0);
-}
-
-void write_tree(blt::size_t index, blt::size_t best_red, blt::size_t best_blue, blt::size_t best_green)
-{
-    BLT_TRACE("Writing tree of index %ld", index);
-    std::cout << "Red: ";
-    program_red.get_current_pop().get_individuals()[best_red].tree.print(program_red, std::cout);
-    std::cout << "Green: ";
-    program_green.get_current_pop().get_individuals()[best_green].tree.print(program_green, std::cout);
-    std::cout << "Blue: ";
-    program_blue.get_current_pop().get_individuals()[best_blue].tree.print(program_blue, std::cout);
-    
-    for (blt::size_t i = 0; i < DATA_SIZE; i++)
-    {
-        found_data.rgb_data[i * CHANNELS] = generation_images[best_red].rgb_data[i * CHANNELS];
-        found_data.rgb_data[i * CHANNELS + 1] = generation_images[best_green].rgb_data[i * CHANNELS + 1];
-        found_data.rgb_data[i * CHANNELS + 2] = generation_images[best_blue].rgb_data[i * CHANNELS + 2];
-    }
-    
-    found_data.save("best_image_" + std::to_string(index) + ".png");
-}
-
-void write_results()
-{
-    constexpr static blt::size_t best_count = 5;
-    auto best_red = program_red.get_best_indexes<best_count>();
-    auto best_green = program_green.get_best_indexes<best_count>();
-    auto best_blue = program_blue.get_best_indexes<best_count>();
-    
-    for (blt::size_t i = 0; i < best_count; i++)
-    {
-        write_tree(i, best_red[i], best_green[i], best_blue[i]);
-        write_tree_large(512, i, best_red[i], best_green[i], best_blue[i]);
-    }
-    
-    print_stats(program_red);
-    print_stats(program_green);
-    print_stats(program_blue);
 }
 
 void init(const blt::gfx::window_data&)
@@ -401,33 +271,39 @@ void init(const blt::gfx::window_data&)
     BLT_INFO("Using Seed: %ld", SEED);
     BLT_START_INTERVAL("Image Test", "Main");
     BLT_DEBUG("Setup Base Image");
-    base_data.load("../Rolex_De_Grande_-_Joo.png");
-    
-    cv::Mat base_image_mat{IMAGE_SIZE, IMAGE_SIZE, CV_8UC3, base_data.rgb_data.data()};
-    cv::cvtColor(base_image_mat, base_image_hsv, cv::COLOR_RGB2HSV);
-    
-    cv::calcHist(&base_image_hsv, 1, channels, cv::Mat(), base_image_hist, 2, histSize, ranges, true, false);
-    cv::normalize(base_image_hist, base_image_hist, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
+    base_image.load("../my_pride_flag.png");
     
     BLT_DEBUG("Setup Types and Operators");
-    type_system.register_type<float>();
+    type_system.register_type<full_image_t>();
     
-    create_program<struct red>(program_red);
-    create_program<struct green>(program_green);
-    create_program<struct blue>(program_blue);
+    blt::gp::operator_builder<context> builder{type_system};
+    builder.add_operator(perlin);
+    builder.add_operator(perlin_bumpy);
+    builder.add_operator(perlin_terminal);
+    
+    builder.add_operator(add);
+    builder.add_operator(sub);
+    builder.add_operator(mul);
+    builder.add_operator(pro_div);
+    builder.add_operator(op_sin);
+    builder.add_operator(op_cos);
+    builder.add_operator(op_exp);
+    builder.add_operator(op_log);
+    builder.add_operator(op_v_mod);
+    builder.add_operator(bw_raw_and);
+    builder.add_operator(bw_raw_or);
+    builder.add_operator(bw_raw_xor);
+    
+    builder.add_operator(lit, true);
+    builder.add_operator(random);
+    builder.add_operator(op_x);
+    builder.add_operator(op_y);
+    
+    program.set_operations(builder.build());
     
     BLT_DEBUG("Generate Initial Population");
-    program_red.generate_population(type_system.get_type<float>().id(), fitness_function_red, false);
-    program_green.generate_population(type_system.get_type<float>().id(), fitness_function_green, false);
-    program_blue.generate_population(type_system.get_type<float>().id(), fitness_function_blue, false);
-    
-    evaluate_generation(program_red, 0);
-    evaluate_generation(program_green, 1);
-    evaluate_generation(program_blue, 2);
-
-//    evaluate_program(program_red);
-//    evaluate_program(program_green);
-//    evaluate_program(program_blue);
+    static constexpr auto fitness_func = create_fitness_function();
+    program.generate_population(type_system.get_type<float>().id(), fitness_func, true);
     
     global_matrices.create_internals();
     resources.load_resources();
@@ -447,33 +323,13 @@ void update(const blt::gfx::window_data& data)
         ImGui::Button("Run Generation");
         if (ImGui::IsItemClicked())
         {
-            execute_generation(program_red);
-            execute_generation(program_green);
-            execute_generation(program_blue);
-            
-            evaluate_generation(program_red, 0);
-            evaluate_generation(program_green, 1);
-            evaluate_generation(program_blue, 2);
-            
-            last_fitness = 0;
+            execute_generation();
         }
-        ImGui::Button("Write Best");
-        if (ImGui::IsItemClicked())
-            write_results();
-        ImGui::Text("Selected Image: %ld", selected_image);
-        ImGui::InputDouble("Fitness Value", &fitness_values[selected_image], 1.0, 10);
         ImGui::End();
     }
     
     const auto mouse_pos = blt::make_vec2(blt::gfx::calculateRay2D(data.width, data.height, global_matrices.getScale2D(), global_matrices.getView2D(),
                                                                    global_matrices.getOrtho()));
-    
-    double max_fitness = 0;
-    for (blt::size_t i = 0; i < config.population_size; i++)
-    {
-        if (fitness_values[i] > max_fitness)
-            max_fitness = fitness_values[i];
-    }
     
     for (blt::size_t i = 0; i < config.population_size; i++)
     {
@@ -496,20 +352,22 @@ void update(const blt::gfx::window_data& data)
             
             if (io.WantCaptureMouse)
                 continue;
-            
-            if (blt::gfx::mousePressedLastFrame())
-            {
-                if (blt::gfx::isKeyPressed(GLFW_KEY_LEFT_SHIFT))
-                {
-                    fitness_values[i] = static_cast<double>(last_fitness);
-                    if (blt::gfx::mousePressedLastFrame())
-                        last_fitness++;
-                } else
-                    selected_image = i;
-            }
+
+//            if (blt::gfx::mousePressedLastFrame())
+//            {
+//                if (blt::gfx::isKeyPressed(GLFW_KEY_LEFT_SHIFT))
+//                {
+//                    program_red.get_current_pop().get_individuals()[i].fitness.raw_fitness = static_cast<double>(last_fitness);
+//                    program_green.get_current_pop().get_individuals()[i].fitness.raw_fitness = static_cast<double>(last_fitness);
+//                    program_blue.get_current_pop().get_individuals()[i].fitness.raw_fitness = static_cast<double>(last_fitness);
+//                    if (blt::gfx::mousePressedLastFrame())
+//                        last_fitness++;
+//                } else
+//                    selected_image = i;
+//            }
         }
         
-        renderer_2d.drawRectangleInternal(blt::make_vec4(blt::vec3(fitness_values[i] / max_fitness), 1.0),
+        renderer_2d.drawRectangleInternal(blt::make_vec4(blt::vec3(program.get_current_pop().get_individuals()[i].fitness.adjusted_fitness), 1.0),
                                           {x, y, IMAGE_SIZE + IMAGE_PADDING / 2.0f, IMAGE_SIZE + IMAGE_PADDING / 2.0f},
                                           5.0f);
         
@@ -529,8 +387,6 @@ void update(const blt::gfx::window_data& data)
 
 int main()
 {
-    for (auto& v : fitness_values)
-        v = POP_SIZE + 1;
     blt::gfx::init(blt::gfx::window_data{"My Sexy Window", init, update, 1440, 720}.setSyncInterval(1));
     global_matrices.cleanup();
     resources.cleanup();
@@ -539,7 +395,7 @@ int main()
     
     BLT_END_INTERVAL("Image Test", "Main");
     
-    base_data.save("input.png");
+    base_image.save("input.png");
     
     BLT_PRINT_PROFILE("Image Test", blt::PRINT_CYCLES | blt::PRINT_THREAD | blt::PRINT_WALL);
     
