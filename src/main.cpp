@@ -142,94 +142,117 @@ blt::gp::operation_t pro_div([](const full_image_t& a, const full_image_t& b) {
 blt::gp::operation_t op_sin([](const full_image_t& a) {
     full_image_t img{};
     for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
-        img.rgb_data[i] = static_cast<blt::u8>(std::sin(static_cast<float>(a.rgb_data[i]) / 255.0f) * 255.0f);
+        img.rgb_data[i] = std::sin(a.rgb_data[i]);
     return img;
 }, "sin");
 blt::gp::operation_t op_cos([](const full_image_t& a) {
     full_image_t img{};
     for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
-        img.rgb_data[i] = static_cast<blt::u8>(std::cos(static_cast<float>(a.rgb_data[i]) / 255.0f) * 255.0f);
+        img.rgb_data[i] = std::cos(a.rgb_data[i]);
     return img;
 }, "cos");
 blt::gp::operation_t op_exp([](const full_image_t& a) {
     full_image_t img{};
     for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
-        img.rgb_data[i] = static_cast<blt::u8>(std::exp(static_cast<float>(a.rgb_data[i]) / 255.0f));
+        img.rgb_data[i] = std::exp(a.rgb_data[i]);
     return img;
 }, "exp");
 blt::gp::operation_t op_log([](const full_image_t& a) {
     full_image_t img{};
     for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
-        img.rgb_data[i] = static_cast<blt::u8>(std::log(a.rgb_data[i] == 0 ? 1 : a.rgb_data[i]) * 255.0f);
+        img.rgb_data[i] = a.rgb_data[i] == 0 ? 0 : std::log(a.rgb_data[i]);
     return img;
 }, "log");
 blt::gp::operation_t op_v_mod([](const full_image_t& a, const full_image_t& b) {
     full_image_t img{};
     for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
-        img.rgb_data[i] = a.rgb_data[i] <= 0 ? 0 : a.rgb_data[i] % b.rgb_data[i];
+        img.rgb_data[i] = b.rgb_data[i] <= 0 ? 0 : static_cast<float>(blt::mem::type_cast<unsigned int>(a.rgb_data[i]) %
+                                                                      blt::mem::type_cast<unsigned int>(b.rgb_data[i]));
     return img;
 }, "v_mod");
 
 blt::gp::operation_t bitwise_and([](const full_image_t& a, const full_image_t& b) {
+    using blt::mem::type_cast;
     full_image_t img{};
     for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
-        img.rgb_data[i] = (a.rgb_data[i] & b.rgb_data[i]);
+        img.rgb_data[i] = static_cast<float>(type_cast<unsigned int>(a.rgb_data[i]) & type_cast<unsigned int>(b.rgb_data[i]));
     return img;
 }, "and");
 
 blt::gp::operation_t bitwise_or([](const full_image_t& a, const full_image_t& b) {
+    using blt::mem::type_cast;
     full_image_t img{};
     for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
-        img.rgb_data[i] = (a.rgb_data[i] | b.rgb_data[i]);
+        img.rgb_data[i] = static_cast<float>(type_cast<unsigned int>(a.rgb_data[i]) | type_cast<unsigned int>(b.rgb_data[i]));
     return img;
 }, "or");
 
 blt::gp::operation_t bitwise_xor([](const full_image_t& a, const full_image_t& b) {
+    using blt::mem::type_cast;
     full_image_t img{};
     for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
-        img.rgb_data[i] = (a.rgb_data[i] ^ b.rgb_data[i]);
+        img.rgb_data[i] = static_cast<float>(type_cast<unsigned int>(a.rgb_data[i]) ^ type_cast<unsigned int>(b.rgb_data[i]));
     return img;
 }, "xor");
 
-blt::gp::operation_t lit([&program]() {
+blt::gp::operation_t lit([]() {
     full_image_t img{};
-    for (unsigned char& i : img.rgb_data)
-        i = static_cast<blt::u8>(program.get_random().get_u32(0, 256.0));
+    for (auto& i : img.rgb_data)
+        i = program.get_random().get_float(0.0f, 1.0f);
     return img;
 }, "lit");
-blt::gp::operation_t random_val([&program]() {
+blt::gp::operation_t random_val([]() {
     full_image_t img{};
-    for (unsigned char& i : img.rgb_data)
-        i = static_cast<blt::u8>(program.get_random().get_u32(0, 256.0));
+    for (auto& i : img.rgb_data)
+        i = program.get_random().get_float(0.0f, 1.0f);
     return img;
 }, "random");
-static blt::gp::operation_t perlin_terminal([](const context& context) {
+static blt::gp::operation_t perlin_terminal([]() {
     full_image_t img{};
-    for (unsigned char& i : img.rgb_data)
-        i = static_cast<blt::u8>(program.get_random().get_u32(0, 256.0));
+    for (blt::size_t i = 0; i < DATA_SIZE; i++)
+    {
+        auto ctx = get_ctx(i);
+        img.rgb_data[i * CHANNELS] = img.rgb_data[i * CHANNELS + 1] = img.rgb_data[i * CHANNELS + 2] = stb_perlin_noise3(ctx.x / IMAGE_SIZE,
+                                                                                                                         ctx.y / IMAGE_SIZE, 0.532, 0,
+                                                                                                                         0, 0);
+    }
     return img;
-    return;
 }, "perlin_term");
-static blt::gp::operation_t op_x([](const context& context) {
-    return context.x;
+static blt::gp::operation_t op_x([]() {
+    full_image_t img{};
+    for (blt::size_t i = 0; i < DATA_SIZE; i++)
+    {
+        auto ctx = get_ctx(i).x;
+        img.rgb_data[i * CHANNELS] = ctx;
+        img.rgb_data[i * CHANNELS + 1] = ctx;
+        img.rgb_data[i * CHANNELS + 2] = ctx;
+    }
+    return img;
 }, "x");
-static blt::gp::operation_t op_y([](const context& context) {
-    return context.y;
+static blt::gp::operation_t op_y([]() {
+    full_image_t img{};
+    for (blt::size_t i = 0; i < DATA_SIZE; i++)
+    {
+        auto ctx = get_ctx(i).y;
+        img.rgb_data[i * CHANNELS] = ctx;
+        img.rgb_data[i * CHANNELS + 1] = ctx;
+        img.rgb_data[i * CHANNELS + 2] = ctx;
+    }
+    return img;
 }, "y");
 
 constexpr auto create_fitness_function()
 {
     return [](blt::gp::tree_t& current_tree, blt::gp::fitness_t& fitness, blt::size_t index) {
         auto& v = generation_images[index];
+        v = current_tree.get_evaluation_value<full_image_t>(nullptr);
+        
         fitness.raw_fitness = 0;
-        for (blt::size_t i = 0; i < DATA_SIZE; i++)
+        for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
         {
-            context ctx = get_ctx(i);
-            auto base = base_data.rgb_data[i * CHANNELS];
-            auto set = static_cast<blt::u8>(current_tree.get_evaluation_value<float>(&ctx) * 255);
-            v.rgb_data[i * CHANNELS + channel] = set;
-            auto diff = static_cast<float>(set - base);
-            fitness.raw_fitness += std::sqrt(diff * diff);
+            auto base = base_image.rgb_data[i];
+            auto dist = v.rgb_data[i] - base;
+            fitness.raw_fitness += std::sqrt(dist * dist);
         }
         
         //BLT_TRACE("Raw fitness: %lf for %ld", fitness.raw_fitness, index);
@@ -293,12 +316,12 @@ void init(const blt::gfx::window_data&)
     builder.add_operator(op_exp);
     builder.add_operator(op_log);
     builder.add_operator(op_v_mod);
-    builder.add_operator(bw_raw_and);
-    builder.add_operator(bw_raw_or);
-    builder.add_operator(bw_raw_xor);
+    builder.add_operator(bitwise_and);
+    builder.add_operator(bitwise_or);
+    builder.add_operator(bitwise_xor);
     
     builder.add_operator(lit, true);
-    builder.add_operator(random);
+    builder.add_operator(random_val);
     builder.add_operator(op_x);
     builder.add_operator(op_y);
     
@@ -306,7 +329,7 @@ void init(const blt::gfx::window_data&)
     
     BLT_DEBUG("Generate Initial Population");
     static constexpr auto fitness_func = create_fitness_function();
-    program.generate_population(type_system.get_type<float>().id(), fitness_func, true);
+    program.generate_population(type_system.get_type<full_image_t>().id(), fitness_func, true);
     
     global_matrices.create_internals();
     resources.load_resources();
@@ -318,7 +341,7 @@ void update(const blt::gfx::window_data& data)
     global_matrices.update_perspectives(data.width, data.height, 90, 0.1, 2000);
     
     for (blt::size_t i = 0; i < config.population_size; i++)
-        resources.get(std::to_string(i)).value()->upload(generation_images[i].rgb_data.data(), IMAGE_SIZE, IMAGE_SIZE, GL_RGB);
+        resources.get(std::to_string(i)).value()->upload(generation_images[i].rgb_data, IMAGE_SIZE, IMAGE_SIZE, GL_RGB, GL_FLOAT);
     
     ImGui::SetNextWindowSize(ImVec2(350, 512), ImGuiCond_Once);
     if (ImGui::Begin("Program Control"))
