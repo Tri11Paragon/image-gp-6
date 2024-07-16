@@ -21,6 +21,7 @@
 #include <blt/std/logging.h>
 #include <blt/std/memory_util.h>
 #include <blt/std/hashmap.h>
+#include <blt/std/time.h>
 #include <stb_image.h>
 #include <stb_image_resize2.h>
 #include <stb_image_write.h>
@@ -38,7 +39,7 @@
 static const blt::u64 SEED = std::random_device()();
 static constexpr long IMAGE_SIZE = 128;
 static constexpr long IMAGE_PADDING = 16;
-static constexpr long POP_SIZE = 50;
+static constexpr long POP_SIZE = 64;
 static constexpr blt::size_t CHANNELS = 3;
 static constexpr blt::size_t DATA_SIZE = IMAGE_SIZE * IMAGE_SIZE;
 static constexpr blt::size_t DATA_CHANNELS_SIZE = DATA_SIZE * CHANNELS;
@@ -56,8 +57,9 @@ struct context
 inline context get_ctx(blt::size_t i)
 {
     context ctx{};
-    ctx.y = std::floor(static_cast<float>(i) / static_cast<float>(IMAGE_SIZE * CHANNELS));
-    ctx.x = static_cast<float>(i) - (ctx.y * IMAGE_SIZE * CHANNELS);
+    i /= CHANNELS;
+    ctx.y = std::floor(static_cast<float>(i) / static_cast<float>(IMAGE_SIZE));
+    ctx.x = static_cast<float>(i) - (ctx.y * IMAGE_SIZE);
     return ctx;
 }
 
@@ -72,9 +74,12 @@ inline context get_pop_ctx(blt::size_t i)
 
 struct full_image_t
 {
-    float rgb_data[DATA_SIZE * CHANNELS];
+    float rgb_data[DATA_SIZE * CHANNELS]{};
     
-    full_image_t() = default;
+    full_image_t() {
+        for (auto& v : rgb_data)
+            v = 0;
+    }
     
     void load(const std::string& path)
     {
@@ -86,7 +91,7 @@ struct full_image_t
         stbi_image_free(data);
     }
     
-    void save(const std::string& str)
+    void save(const std::string&)
     {
         //stbi_write_png(str.c_str(), IMAGE_SIZE, IMAGE_SIZE, CHANNELS, rgb_data, 0);
     }
@@ -100,6 +105,9 @@ struct full_image_t
 std::array<full_image_t, POP_SIZE> generation_images;
 
 full_image_t base_image;
+blt::size_t last_run = 0;
+blt::i32 time_between_runs = 100;
+bool is_running = false;
 
 blt::gp::prog_config_t config = blt::gp::prog_config_t()
         .set_initial_min_tree_size(2)
@@ -136,7 +144,7 @@ blt::gp::operation_t mul([](const full_image_t& a, const full_image_t& b) {
 blt::gp::operation_t pro_div([](const full_image_t& a, const full_image_t& b) {
     full_image_t img{};
     for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
-        img.rgb_data[i] = a.rgb_data[i] / (b.rgb_data[i] == 0 ? 1 : b.rgb_data[i]);
+        img.rgb_data[i] = b.rgb_data[i] == 0 ? 0 : (a.rgb_data[i] / b.rgb_data[i]);
     return img;
 }, "div");
 blt::gp::operation_t op_sin([](const full_image_t& a) {
@@ -191,7 +199,11 @@ blt::gp::operation_t bitwise_xor([](const full_image_t& a, const full_image_t& b
     using blt::mem::type_cast;
     full_image_t img{};
     for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
-        img.rgb_data[i] = static_cast<float>(type_cast<unsigned int>(a.rgb_data[i]) ^ type_cast<unsigned int>(b.rgb_data[i]));
+    {
+        auto in_a = type_cast<unsigned int>(a.rgb_data[i]);
+        auto in_b = type_cast<unsigned int>(b.rgb_data[i]);
+        img.rgb_data[i] = static_cast<float>(in_a ^ in_b);
+    }
     return img;
 }, "xor");
 
@@ -206,40 +218,96 @@ blt::gp::operation_t random_val([]() {
     for (auto& i : img.rgb_data)
         i = program.get_random().get_float(0.0f, 1.0f);
     return img;
-}, "random");
+}, "color_noise");
+static blt::gp::operation_t perlin([](const full_image_t& x, const full_image_t& y, const full_image_t& z) {
+    full_image_t img{};
+    for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
+        img.rgb_data[i] = stb_perlin_noise3(x.rgb_data[i], y.rgb_data[i], z.rgb_data[i], 0, 0, 0);
+    return img;
+}, "perlin");
 static blt::gp::operation_t perlin_terminal([]() {
     full_image_t img{};
-    for (blt::size_t i = 0; i < DATA_SIZE; i++)
+    for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
     {
         auto ctx = get_ctx(i);
-        img.rgb_data[i * CHANNELS] = img.rgb_data[i * CHANNELS + 1] = img.rgb_data[i * CHANNELS + 2] = stb_perlin_noise3(ctx.x / IMAGE_SIZE,
-                                                                                                                         ctx.y / IMAGE_SIZE, 0.532, 0,
-                                                                                                                         0, 0);
+        img.rgb_data[i] = stb_perlin_noise3(ctx.x / IMAGE_SIZE, ctx.y / IMAGE_SIZE, static_cast<float>(i % CHANNELS) / CHANNELS, 0, 0, 0);
     }
     return img;
 }, "perlin_term");
-static blt::gp::operation_t op_x([]() {
+static blt::gp::operation_t op_img_size([]() {
+    full_image_t img{};
+    for (float& i : img.rgb_data)
+    {
+        i = IMAGE_SIZE;
+    }
+    return img;
+}, "img_size");
+static blt::gp::operation_t op_x_r([]() {
     full_image_t img{};
     for (blt::size_t i = 0; i < DATA_SIZE; i++)
     {
         auto ctx = get_ctx(i).x;
         img.rgb_data[i * CHANNELS] = ctx;
+        img.rgb_data[i * CHANNELS + 1] = 0;
+        img.rgb_data[i * CHANNELS + 2] = 0;
+    }
+    return img;
+}, "x_r");
+static blt::gp::operation_t op_x_g([]() {
+    full_image_t img{};
+    for (blt::size_t i = 0; i < DATA_SIZE; i++)
+    {
+        auto ctx = get_ctx(i).x;
+        img.rgb_data[i * CHANNELS] = 0;
         img.rgb_data[i * CHANNELS + 1] = ctx;
+        img.rgb_data[i * CHANNELS + 2] = 0;
+    }
+    return img;
+}, "x_g");
+static blt::gp::operation_t op_x_b([]() {
+    full_image_t img{};
+    for (blt::size_t i = 0; i < DATA_SIZE; i++)
+    {
+        auto ctx = get_ctx(i).x;
+        img.rgb_data[i * CHANNELS] = 0;
+        img.rgb_data[i * CHANNELS + 1] = 0;
         img.rgb_data[i * CHANNELS + 2] = ctx;
     }
     return img;
-}, "x");
-static blt::gp::operation_t op_y([]() {
+}, "x_b");
+static blt::gp::operation_t op_y_r([]() {
     full_image_t img{};
     for (blt::size_t i = 0; i < DATA_SIZE; i++)
     {
         auto ctx = get_ctx(i).y;
         img.rgb_data[i * CHANNELS] = ctx;
+        img.rgb_data[i * CHANNELS + 1] = 0;
+        img.rgb_data[i * CHANNELS + 2] = 0;
+    }
+    return img;
+}, "y_r");
+static blt::gp::operation_t op_y_g([]() {
+    full_image_t img{};
+    for (blt::size_t i = 0; i < DATA_SIZE; i++)
+    {
+        auto ctx = get_ctx(i).y;
+        img.rgb_data[i * CHANNELS] = 0;
         img.rgb_data[i * CHANNELS + 1] = ctx;
+        img.rgb_data[i * CHANNELS + 2] = 0;
+    }
+    return img;
+}, "y_g");
+static blt::gp::operation_t op_y_b([]() {
+    full_image_t img{};
+    for (blt::size_t i = 0; i < DATA_SIZE; i++)
+    {
+        auto ctx = get_ctx(i).y;
+        img.rgb_data[i * CHANNELS] = 0;
+        img.rgb_data[i * CHANNELS + 1] = 0;
         img.rgb_data[i * CHANNELS + 2] = ctx;
     }
     return img;
-}, "y");
+}, "y_b");
 
 constexpr auto create_fitness_function()
 {
@@ -251,7 +319,10 @@ constexpr auto create_fitness_function()
         for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
         {
             auto base = base_image.rgb_data[i];
-            auto dist = v.rgb_data[i] - base;
+            auto set = v.rgb_data[i];
+            if (std::isnan(set))
+                set = 1 - base;
+            auto dist = set - base;
             fitness.raw_fitness += std::sqrt(dist * dist);
         }
         
@@ -305,6 +376,7 @@ void init(const blt::gfx::window_data&)
     type_system.register_type<full_image_t>();
     
     blt::gp::operator_builder<context> builder{type_system};
+    builder.add_operator(perlin);
     builder.add_operator(perlin_terminal);
     
     builder.add_operator(add);
@@ -322,8 +394,12 @@ void init(const blt::gfx::window_data&)
     
     builder.add_operator(lit, true);
     builder.add_operator(random_val);
-    builder.add_operator(op_x);
-    builder.add_operator(op_y);
+    builder.add_operator(op_x_r);
+    builder.add_operator(op_x_g);
+    builder.add_operator(op_x_b);
+    builder.add_operator(op_y_r);
+    builder.add_operator(op_y_g);
+    builder.add_operator(op_y_b);
     
     program.set_operations(builder.build());
     
@@ -347,11 +423,28 @@ void update(const blt::gfx::window_data& data)
     if (ImGui::Begin("Program Control"))
     {
         ImGui::Button("Run Generation");
-        if (ImGui::IsItemClicked())
+        if (ImGui::IsItemClicked() && !is_running)
         {
             execute_generation();
+            print_stats();
         }
+        ImGui::InputInt("Time Between Runs", &time_between_runs);
+        ImGui::Checkbox("Run", &is_running);
+        auto& stats = program.get_population_stats();
+        ImGui::Text("Stats:");
+        ImGui::Text("Average fitness: %lf", stats.average_fitness.load());
+        ImGui::Text("Best fitness: %lf", stats.best_fitness.load());
+        ImGui::Text("Worst fitness: %lf", stats.worst_fitness.load());
+        ImGui::Text("Overall fitness: %lf", stats.overall_fitness.load());
         ImGui::End();
+    }
+    
+    if (is_running && (blt::system::getCurrentTimeMilliseconds() - last_run) > static_cast<blt::size_t>(time_between_runs))
+    {
+        execute_generation();
+        print_stats();
+        
+        last_run = blt::system::getCurrentTimeMilliseconds();
     }
     
     const auto mouse_pos = blt::make_vec2(blt::gfx::calculateRay2D(data.width, data.height, global_matrices.getScale2D(), global_matrices.getView2D(),
