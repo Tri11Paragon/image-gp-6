@@ -44,6 +44,56 @@ blt::gfx::resource_manager resources;
 blt::gfx::batch_renderer_2d renderer_2d(resources, global_matrices);
 blt::gfx::first_person_camera_2d camera;
 
+static constexpr blt::size_t TYPE_COUNT = 1;
+
+std::array<double, POP_SIZE> fitness_values{};
+double last_fitness = 0;
+double hovered_fitness = 0;
+double hovered_fitness_value = 0;
+bool evaluate = true;
+
+std::array<bool, TYPE_COUNT> has_literal_converter = {
+        true
+};
+
+std::array<std::function<void(blt::gp::gp_program& program, void*, void*, void*, void*)>, TYPE_COUNT> literal_crossover_funcs = {
+        [](blt::gp::gp_program&, void* p1_in_ptr, void* p2_in_ptr, void* c1_out_ptr, void* c2_out_ptr) {
+            auto& p1_in = *static_cast<full_image_t*>(p1_in_ptr);
+            auto& p2_in = *static_cast<full_image_t*>(p2_in_ptr);
+            auto& c1_out = *static_cast<full_image_t*>(c1_out_ptr);
+            auto& c2_out = *static_cast<full_image_t*>(c2_out_ptr);
+            
+            for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
+            {
+                auto diff = p1_in.rgb_data[i] - p2_in.rgb_data[i];
+                c1_out.rgb_data[i] = p1_in.rgb_data[i] - diff;
+                c2_out.rgb_data[i] = p2_in.rgb_data[i] + diff;
+            }
+        }
+};
+
+std::array<std::function<void(blt::gp::gp_program& program, void*, void*)>, TYPE_COUNT> literal_mutation_funcs = {
+        [](blt::gp::gp_program& program, void* p1_in_ptr, void* c1_out_ptr) {
+            auto& p1_in = *static_cast<full_image_t*>(p1_in_ptr);
+            auto& c1_out = *static_cast<full_image_t*>(c1_out_ptr);
+            
+            for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
+                c1_out.rgb_data[i] = p1_in.rgb_data[i] + program.get_random().get_float(-1.0f, 1.0f);
+        }
+};
+
+class image_crossover_t : public blt::gp::crossover_t
+{
+    public:
+        blt::expected<result_t, error_t> apply(blt::gp::gp_program& program, const blt::gp::tree_t& p1, const blt::gp::tree_t& p2) final
+        {
+            auto sel = program.get_random().choice();
+            if (sel)
+                return blt::gp::crossover_t::apply(program, p1, p2);
+            std::abort();
+        }
+};
+
 struct context
 {
     float x, y;
@@ -126,6 +176,14 @@ blt::gp::operation_t bitwise_or([](const full_image_t& a, const full_image_t& b)
     return img;
 }, "or");
 
+blt::gp::operation_t bitwise_invert([](const full_image_t& a) {
+    using blt::mem::type_cast;
+    full_image_t img{};
+    for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
+        img.rgb_data[i] = static_cast<float>(~type_cast<unsigned int>(a.rgb_data[i]));
+    return img;
+}, "invert");
+
 blt::gp::operation_t bitwise_xor([](const full_image_t& a, const full_image_t& b) {
     using blt::mem::type_cast;
     full_image_t img{};
@@ -201,10 +259,13 @@ blt::gp::operation_t random_val([]() {
         i = program.get_random().get_float(0.0f, 1.0f);
     return img;
 }, "color_noise");
-static blt::gp::operation_t perlin([](const full_image_t& x, const full_image_t& y, const full_image_t& z) {
+static blt::gp::operation_t perlin([](const full_image_t& x, const full_image_t& y, const full_image_t& z, const full_image_t& scale) {
     full_image_t img{};
     for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
-        img.rgb_data[i] = stb_perlin_noise3(x.rgb_data[i], y.rgb_data[i], z.rgb_data[i], 0, 0, 0);
+    {
+        auto s = scale.rgb_data[i];
+        img.rgb_data[i] = stb_perlin_noise3(x.rgb_data[i] / s, y.rgb_data[i] / s, z.rgb_data[i] / s, 0, 0, 0);
+    }
     return img;
 }, "perlin");
 static blt::gp::operation_t perlin_terminal([]() {
@@ -212,10 +273,21 @@ static blt::gp::operation_t perlin_terminal([]() {
     for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
     {
         auto ctx = get_ctx(i);
-        img.rgb_data[i] = stb_perlin_noise3(ctx.x / IMAGE_SIZE, ctx.y / IMAGE_SIZE, static_cast<float>(i % CHANNELS) / CHANNELS, 0, 0, 0);
+        img.rgb_data[i] =
+                stb_perlin_noise3(ctx.x / IMAGE_SIZE, ctx.y / IMAGE_SIZE, static_cast<float>(i % CHANNELS) / CHANNELS, 0, 0, 0);
     }
     return img;
 }, "perlin_term");
+static blt::gp::operation_t perlin_warped([](const full_image_t& u, const full_image_t& v) {
+    full_image_t img{};
+    for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
+    {
+        auto ctx = get_ctx(i);
+        img.rgb_data[i] = stb_perlin_noise3(ctx.x / IMAGE_SIZE + u.rgb_data[i], ctx.y / IMAGE_SIZE + v.rgb_data[i],
+                                             static_cast<float>(i % CHANNELS) / CHANNELS, 0, 0, 0);
+    }
+    return img;
+}, "perlin_warped");
 static blt::gp::operation_t op_img_size([]() {
     full_image_t img{};
     for (float& i : img.rgb_data)
@@ -389,22 +461,28 @@ constexpr auto create_fitness_function()
 {
     return [](blt::gp::tree_t& current_tree, blt::gp::fitness_t& fitness, blt::size_t index) {
         auto& v = generation_images[index];
-        v = current_tree.get_evaluation_value<full_image_t>(nullptr);
+        if (evaluate)
+            v = current_tree.get_evaluation_value<full_image_t>(nullptr);
         
-        fitness.raw_fitness = 0;
-        for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
-            fitness.raw_fitness += compare_values(v.rgb_data[i], base_image.rgb_data[i]);
-        
-        fitness.raw_fitness /= (IMAGE_SIZE * IMAGE_SIZE);
-        auto raw = get_fractal_value(v);
-        auto fit = std::max(0.0, 1.0 - std::abs(1.35 - raw.combined));
-        auto fit2 = std::max(0.0, 1.0 - std::abs(1.35 - raw.total));
-        //BLT_DEBUG("Fitness %lf %lf %lf || %lf => %lf (fit: %lf)", raw.r, raw.g, raw.b, raw.total, raw.combined, fit);
-        if (std::isnan(raw.total) || std::isnan(raw.combined))
-            fitness.raw_fitness += 400;
-        else
-            fitness.raw_fitness += raw.total + raw.combined + 1.0;
-        
+        if (fitness_values[index] < 0)
+        {
+            fitness.raw_fitness = 0;
+            for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
+                fitness.raw_fitness += compare_values(v.rgb_data[i], base_image.rgb_data[i]);
+            
+            fitness.raw_fitness /= (IMAGE_SIZE * IMAGE_SIZE);
+            auto raw = get_fractal_value(v);
+            auto fit = std::max(0.0, 1.0 - std::abs(1.35 - raw.combined));
+            auto fit2 = std::max(0.0, 1.0 - std::abs(1.35 - raw.total));
+            //BLT_DEBUG("Fitness %lf %lf %lf || %lf => %lf (fit: %lf)", raw.r, raw.g, raw.b, raw.total, raw.combined, fit);
+            if (std::isnan(raw.total) || std::isnan(raw.combined))
+                fitness.raw_fitness += 400;
+            else
+                fitness.raw_fitness += raw.total + raw.combined + 1.0;
+            
+            fitness.raw_fitness += last_fitness;
+        } else
+            fitness.raw_fitness = fitness_values[index];
         fitness.standardized_fitness = fitness.raw_fitness;
         fitness.adjusted_fitness = (1.0 / (1.0 + fitness.standardized_fitness));
     };
@@ -413,18 +491,29 @@ constexpr auto create_fitness_function()
 void execute_generation()
 {
     BLT_TRACE("------------{Begin Generation %ld}------------", program.get_current_generation());
+    BLT_TRACE("Evaluate Fitness");
+    BLT_START_INTERVAL("Image Test", "Fitness");
+    evaluate = false;
+    program.evaluate_fitness();
+    BLT_END_INTERVAL("Image Test", "Fitness");
     BLT_START_INTERVAL("Image Test", "Gen");
     auto sel = blt::gp::select_tournament_t{};
+//    auto sel = blt::gp::select_fitness_proportionate_t{};
     program.create_next_generation(sel, sel, sel);
     BLT_END_INTERVAL("Image Test", "Gen");
     BLT_TRACE("Move to next generation");
     program.next_generation();
-    BLT_TRACE("Evaluate Fitness");
-    BLT_START_INTERVAL("Image Test", "Fitness");
+    BLT_TRACE("Evaluate Image");
+    BLT_START_INTERVAL("Image Test", "Image Eval");
+    evaluate = true;
     program.evaluate_fitness();
-    BLT_END_INTERVAL("Image Test", "Fitness");
+    BLT_END_INTERVAL("Image Test", "Image Eval");
     BLT_TRACE("----------------------------------------------");
     std::cout << std::endl;
+    // reset all fitness values.
+    for (auto& v : fitness_values)
+        v = -1;
+    last_fitness = 0;
 }
 
 void print_stats()
@@ -474,8 +563,9 @@ void init(const blt::gfx::window_data&)
     type_system.register_type<full_image_t>();
     
     blt::gp::operator_builder<context> builder{type_system};
-    //builder.add_operator(perlin);
+    builder.add_operator(perlin);
     builder.add_operator(perlin_terminal);
+    builder.add_operator(perlin_warped);
     
     builder.add_operator(add);
     builder.add_operator(sub);
@@ -490,18 +580,20 @@ void init(const blt::gfx::window_data&)
     builder.add_operator(op_v_mod);
     builder.add_operator(bitwise_and);
     builder.add_operator(bitwise_or);
+    builder.add_operator(bitwise_invert);
     builder.add_operator(bitwise_xor);
     builder.add_operator(dissolve);
     builder.add_operator(hsv_to_rgb);
     
     builder.add_operator(lit, true);
     builder.add_operator(random_val);
-    builder.add_operator(op_x_r);
-    builder.add_operator(op_x_g);
-    builder.add_operator(op_x_b);
-    builder.add_operator(op_y_r);
-    builder.add_operator(op_y_g);
-    builder.add_operator(op_y_b);
+    const bool state = false;
+    builder.add_operator(op_x_r, true);
+    builder.add_operator(op_x_g, true);
+    builder.add_operator(op_x_b, state);
+    builder.add_operator(op_y_r, state);
+    builder.add_operator(op_y_g, state);
+    builder.add_operator(op_y_b, state);
     
     program.set_operations(builder.build());
     
@@ -523,7 +615,7 @@ void update(const blt::gfx::window_data& data)
     if (ImGui::Begin("Program Control"))
     {
         ImGui::Button("Run Generation");
-        if (ImGui::IsItemClicked() && !is_running)
+        if ((ImGui::IsItemClicked() || (blt::gfx::isKeyPressed(GLFW_KEY_R) && blt::gfx::keyPressedLastFrame())) && !is_running)
         {
             run_generation = true;
         }
@@ -535,6 +627,9 @@ void update(const blt::gfx::window_data& data)
         ImGui::Text("Best fitness: %lf", stats.best_fitness.load());
         ImGui::Text("Worst fitness: %lf", stats.worst_fitness.load());
         ImGui::Text("Overall fitness: %lf", stats.overall_fitness.load());
+        ImGui::Separator();
+        ImGui::Text("Hovered Fitness: %lf", hovered_fitness);
+        ImGui::Text("Hovered Fitness Value: %lf", hovered_fitness_value);
         ImGui::End();
     }
     
@@ -557,37 +652,39 @@ void update(const blt::gfx::window_data& data)
             renderer_2d.drawRectangleInternal(blt::make_color(0.9, 0.9, 0.3),
                                               {x, y, IMAGE_SIZE + IMAGE_PADDING / 2.0f, IMAGE_SIZE + IMAGE_PADDING / 2.0f},
                                               10.0f);
+            auto& ind = program.get_current_pop().get_individuals()[i];
             
             auto& io = ImGui::GetIO();
             
             if (io.WantCaptureMouse)
                 continue;
             
-            if (blt::gfx::mousePressedLastFrame())
+            hovered_fitness = ind.fitness.adjusted_fitness;
+            
+            if (blt::gfx::isKeyPressed(GLFW_KEY_LEFT_SHIFT))
             {
-                auto& ind = program.get_current_pop().get_individuals()[i];
-                std::cout << "Fitness: " << ind.fitness.adjusted_fitness << " " << ind.fitness.raw_fitness << " ";
-                ind.tree.print(program, std::cout, false);
-                std::cout << std::endl;
+                if (blt::gfx::mousePressedLastFrame())
+                {
+                    std::cout << "Fitness: " << ind.fitness.adjusted_fitness << " " << ind.fitness.raw_fitness << " ";
+                    ind.tree.print(program, std::cout, false);
+                    std::cout << std::endl;
+                }
+            } else
+            {
+                if (blt::gfx::mousePressedLastFrame() || (blt::gfx::isKeyPressed(GLFW_KEY_F) && blt::gfx::keyPressedLastFrame()))
+                {
+                    fitness_values[i] = last_fitness;
+                    last_fitness += 1;
+                }
             }
-
-//            if (blt::gfx::mousePressedLastFrame())
-//            {
-//                if (blt::gfx::isKeyPressed(GLFW_KEY_LEFT_SHIFT))
-//                {
-//                    program_red.get_current_pop().get_individuals()[i].fitness.raw_fitness = static_cast<double>(last_fitness);
-//                    program_green.get_current_pop().get_individuals()[i].fitness.raw_fitness = static_cast<double>(last_fitness);
-//                    program_blue.get_current_pop().get_individuals()[i].fitness.raw_fitness = static_cast<double>(last_fitness);
-//                    if (blt::gfx::mousePressedLastFrame())
-//                        last_fitness++;
-//                } else
-//                    selected_image = i;
-//            }
+            
+            hovered_fitness_value = fitness_values[i];
         }
         
-        renderer_2d.drawRectangleInternal(blt::make_vec4(blt::vec3(program.get_current_pop().get_individuals()[i].fitness.adjusted_fitness), 1.0),
-                                          {x, y, IMAGE_SIZE + IMAGE_PADDING / 2.0f, IMAGE_SIZE + IMAGE_PADDING / 2.0f},
-                                          5.0f);
+        renderer_2d.drawRectangleInternal(
+                blt::make_vec4(blt::vec3(static_cast<float>(program.get_current_pop().get_individuals()[i].fitness.adjusted_fitness)), 1.0),
+                {x, y, IMAGE_SIZE + IMAGE_PADDING / 2.0f, IMAGE_SIZE + IMAGE_PADDING / 2.0f},
+                5.0f);
         
         renderer_2d.drawRectangleInternal(blt::gfx::render_info_t::make_info(std::to_string(i)),
                                           {x, y, IMAGE_SIZE,
@@ -605,6 +702,9 @@ void update(const blt::gfx::window_data& data)
 
 int main()
 {
+    // reset all fitness values.
+    for (auto& v : fitness_values)
+        v = -1;
     blt::gfx::init(blt::gfx::window_data{"My Sexy Window", init, update, 1440, 720}.setSyncInterval(1));
     global_matrices.cleanup();
     resources.cleanup();

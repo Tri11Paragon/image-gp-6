@@ -33,7 +33,7 @@ static constexpr blt::size_t DATA_SIZE = IMAGE_SIZE * IMAGE_SIZE;
 static constexpr blt::size_t DATA_CHANNELS_SIZE = DATA_SIZE * CHANNELS;
 static constexpr blt::size_t BOX_COUNT = static_cast<blt::size_t>(log2(IMAGE_SIZE / 2));
 static constexpr float THRESHOLD = 0.3;
-static constexpr auto load_image = "../029a_-_Survival_of_the_Idiots_349.jpg";
+static constexpr auto load_image = "../GSab4SWWcAA1TNR.png";
 
 blt::gp::prog_config_t config = blt::gp::prog_config_t()
         .set_initial_min_tree_size(4)
@@ -44,6 +44,6 @@ blt::gp::prog_config_t config = blt::gp::prog_config_t()
         .set_crossover_chance(1.0)
         .set_reproduction_chance(0.5)
         .set_pop_size(POP_SIZE)
-        .set_thread_count(16);
+        .set_thread_count(0);
 
 #endif //IMAGE_GP_6_CONFIG_H
