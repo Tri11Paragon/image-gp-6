@@ -25,16 +25,16 @@
 
 inline blt::gp::operation_t f_add([](float a, float b) {
     return a + b;
-}, "add");
+}, "f_add");
 inline blt::gp::operation_t f_sub([](float a, float b) {
     return a - b;
-}, "sub");
+}, "f_sub");
 inline blt::gp::operation_t f_mul([](float a, float b) {
     return a * b;
-}, "mul");
+}, "f_mul");
 inline blt::gp::operation_t f_pro_div([](float a, float b) {
     return b == 0.0f ? 0.0f : (a / b);
-}, "div");
+}, "f_div");
 inline blt::gp::operation_t f_literal([]() {
     return program.get_random().get_float(0.0, 1.0);
 }, "float_lit");
