@@ -36,15 +36,17 @@
 #include "opencv2/imgproc.hpp"
 #include <random>
 #include "slr.h"
+#include "float_operations.h"
 #include <images.h>
 #include <helper.h>
+#include <image_operations.h>
 
 blt::gfx::matrix_state_manager global_matrices;
 blt::gfx::resource_manager resources;
 blt::gfx::batch_renderer_2d renderer_2d(resources, global_matrices);
 blt::gfx::first_person_camera_2d camera;
 
-static constexpr blt::size_t TYPE_COUNT = 1;
+static constexpr blt::size_t TYPE_COUNT = 2;
 
 std::array<double, POP_SIZE> fitness_values{};
 double last_fitness = 0;
@@ -53,6 +55,7 @@ double hovered_fitness_value = 0;
 bool evaluate = true;
 
 std::array<bool, TYPE_COUNT> has_literal_converter = {
+        true,
         true
 };
 
@@ -69,6 +72,16 @@ std::array<std::function<void(blt::gp::gp_program& program, void*, void*, void*,
                 c1_out.rgb_data[i] = p1_in.rgb_data[i] - diff;
                 c2_out.rgb_data[i] = p2_in.rgb_data[i] + diff;
             }
+        },
+        [](blt::gp::gp_program&, void* p1_in_ptr, void* p2_in_ptr, void* c1_out_ptr, void* c2_out_ptr) {
+            auto& p1_in = *static_cast<float*>(p1_in_ptr);
+            auto& p2_in = *static_cast<float*>(p2_in_ptr);
+            auto& c1_out = *static_cast<float*>(c1_out_ptr);
+            auto& c2_out = *static_cast<float*>(c2_out_ptr);
+            
+            auto diff = p1_in - p2_in;
+            c1_out = p1_in - diff;
+            c2_out = p2_in + diff;
         }
 };
 
@@ -79,48 +92,26 @@ std::array<std::function<void(blt::gp::gp_program& program, void*, void*)>, TYPE
             
             for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
                 c1_out.rgb_data[i] = p1_in.rgb_data[i] + program.get_random().get_float(-1.0f, 1.0f);
+        },
+        [](blt::gp::gp_program& program, void* p1_in_ptr, void* c1_out_ptr) {
+            auto& p1_in = *static_cast<float*>(p1_in_ptr);
+            auto& c1_out = *static_cast<float*>(c1_out_ptr);
+            
+            c1_out = p1_in + program.get_random().get_float(-1.0f, 1.0f);
         }
 };
 
 class image_crossover_t : public blt::gp::crossover_t
 {
     public:
-        blt::expected<result_t, error_t> apply(blt::gp::gp_program& program, const blt::gp::tree_t& p1, const blt::gp::tree_t& p2) final
+        blt::expected<result_t, error_t> apply(blt::gp::gp_program& prog, const blt::gp::tree_t& p1, const blt::gp::tree_t& p2) final
         {
-            auto sel = program.get_random().choice();
+            auto sel = prog.get_random().choice();
             if (sel)
-                return blt::gp::crossover_t::apply(program, p1, p2);
+                return blt::gp::crossover_t::apply(prog, p1, p2);
             std::abort();
         }
 };
-
-struct context
-{
-    float x, y;
-};
-
-inline context get_ctx(blt::size_t i)
-{
-    context ctx{};
-    i /= CHANNELS;
-    ctx.y = std::floor(static_cast<float>(i) / static_cast<float>(IMAGE_SIZE));
-    ctx.x = static_cast<float>(i) - (ctx.y * IMAGE_SIZE);
-    return ctx;
-}
-
-inline context get_pop_ctx(blt::size_t i)
-{
-    auto const sq = static_cast<float>(std::sqrt(POP_SIZE));
-    context ctx{};
-    ctx.y = std::floor(static_cast<float>(i) / static_cast<float>(sq));
-    ctx.x = static_cast<float>(i) - (ctx.y * sq);
-    return ctx;
-}
-
-inline blt::size_t get_index(blt::size_t x, blt::size_t y)
-{
-    return y * IMAGE_SIZE + x;
-}
 
 std::array<full_image_t, POP_SIZE> generation_images;
 
@@ -129,239 +120,7 @@ blt::size_t last_run = 0;
 blt::i32 time_between_runs = 16;
 bool is_running = false;
 
-blt::gp::type_provider type_system;
-blt::gp::gp_program program{type_system, SEED, config};
 std::unique_ptr<std::thread> gp_thread = nullptr;
-
-blt::gp::operation_t add(make_double(std::plus()), "add");
-blt::gp::operation_t sub(make_double(std::minus()), "sub");
-blt::gp::operation_t mul(make_double(std::multiplies()), "mul");
-blt::gp::operation_t pro_div([](const full_image_t& a, const full_image_t& b) {
-    full_image_t img{};
-    for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
-        img.rgb_data[i] = b.rgb_data[i] == 0 ? 0 : (a.rgb_data[i] / b.rgb_data[i]);
-    return img;
-}, "div");
-blt::gp::operation_t op_sin(make_single([](float a) {
-    return (std::sin(a) + 1.0f) / 2.0f;
-}), "sin");
-blt::gp::operation_t op_cos(make_single([](float a) {
-    return (std::cos(a) + 1.0f) / 2.0f;
-}), "cos");
-blt::gp::operation_t op_atan(make_single((float (*)(float)) &std::atan), "atan");
-blt::gp::operation_t op_exp(make_single((float (*)(float)) &std::exp), "exp");
-blt::gp::operation_t op_abs(make_single((float (*)(float)) &std::abs), "abs");
-blt::gp::operation_t op_log(make_single((float (*)(float)) &std::log), "log");
-blt::gp::operation_t op_v_mod([](const full_image_t& a, const full_image_t& b) {
-    full_image_t img{};
-    for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
-        img.rgb_data[i] = b.rgb_data[i] <= 0 ? 0 : static_cast<float>(blt::mem::type_cast<unsigned int>(a.rgb_data[i]) %
-                                                                      blt::mem::type_cast<unsigned int>(b.rgb_data[i]));
-    return img;
-}, "v_mod");
-
-blt::gp::operation_t bitwise_and([](const full_image_t& a, const full_image_t& b) {
-    using blt::mem::type_cast;
-    full_image_t img{};
-    for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
-        img.rgb_data[i] = static_cast<float>(type_cast<unsigned int>(a.rgb_data[i]) & type_cast<unsigned int>(b.rgb_data[i]));
-    return img;
-}, "and");
-
-blt::gp::operation_t bitwise_or([](const full_image_t& a, const full_image_t& b) {
-    using blt::mem::type_cast;
-    full_image_t img{};
-    for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
-        img.rgb_data[i] = static_cast<float>(type_cast<unsigned int>(a.rgb_data[i]) | type_cast<unsigned int>(b.rgb_data[i]));
-    return img;
-}, "or");
-
-blt::gp::operation_t bitwise_invert([](const full_image_t& a) {
-    using blt::mem::type_cast;
-    full_image_t img{};
-    for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
-        img.rgb_data[i] = static_cast<float>(~type_cast<unsigned int>(a.rgb_data[i]));
-    return img;
-}, "invert");
-
-blt::gp::operation_t bitwise_xor([](const full_image_t& a, const full_image_t& b) {
-    using blt::mem::type_cast;
-    full_image_t img{};
-    for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
-    {
-        auto in_a = type_cast<unsigned int>(a.rgb_data[i]);
-        auto in_b = type_cast<unsigned int>(b.rgb_data[i]);
-        img.rgb_data[i] = static_cast<float>(in_a ^ in_b);
-    }
-    return img;
-}, "xor");
-
-blt::gp::operation_t dissolve([](const full_image_t& a, const full_image_t& b) {
-    using blt::mem::type_cast;
-    full_image_t img{};
-    for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
-    {
-        auto diff = (a.rgb_data[i] - b.rgb_data[i]) / 2.0f;
-        img.rgb_data[i] = a.rgb_data[i] + diff;
-    }
-    return img;
-}, "dissolve");
-
-blt::gp::operation_t hsv_to_rgb([](const full_image_t& a) {
-    using blt::mem::type_cast;
-    full_image_t img{};
-    for (blt::size_t i = 0; i < DATA_SIZE; i++)
-    {
-        auto h = static_cast<blt::i32>(a.rgb_data[i * CHANNELS + 0]) % 360;
-        auto s = a.rgb_data[i * CHANNELS + 1];
-        auto v = a.rgb_data[i * CHANNELS + 2];
-        auto c = v * s;
-        auto x = c * static_cast<float>(1 - std::abs(((h / 60) % 2) - 1));
-        auto m = v - c;
-        
-        blt::vec3 rgb;
-        if (h >= 0 && h < 60)
-            rgb = {c, x, 0.0f};
-        else if (h >= 60 && h < 120)
-            rgb = {x, c, 0.0f};
-        else if (h >= 120 && h < 180)
-            rgb = {0.0f, c, x};
-        else if (h >= 180 && h < 240)
-            rgb = {0.0f, x, c};
-        else if (h >= 240 && h < 300)
-            rgb = {x, 0.0f, c};
-        else if (h >= 300 && h < 360)
-            rgb = {c, 0.0f, x};
-        
-        img.rgb_data[i * CHANNELS] = rgb.x() + m;
-        img.rgb_data[i * CHANNELS + 1] = rgb.y() + m;
-        img.rgb_data[i * CHANNELS + 2] = rgb.z() + m;
-    }
-    return img;
-}, "hsv");
-
-blt::gp::operation_t lit([]() {
-    full_image_t img{};
-    auto r = program.get_random().get_float(0.0f, 1.0f);
-    auto g = program.get_random().get_float(0.0f, 1.0f);
-    auto b = program.get_random().get_float(0.0f, 1.0f);
-    for (blt::size_t i = 0; i < DATA_SIZE; i++)
-    {
-        img.rgb_data[i * CHANNELS] = r;
-        img.rgb_data[i * CHANNELS + 1] = g;
-        img.rgb_data[i * CHANNELS + 2] = b;
-    }
-    return img;
-}, "lit");
-blt::gp::operation_t random_val([]() {
-    full_image_t img{};
-    for (auto& i : img.rgb_data)
-        i = program.get_random().get_float(0.0f, 1.0f);
-    return img;
-}, "color_noise");
-static blt::gp::operation_t perlin([](const full_image_t& x, const full_image_t& y, const full_image_t& z, const full_image_t& scale) {
-    full_image_t img{};
-    for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
-    {
-        auto s = scale.rgb_data[i];
-        img.rgb_data[i] = stb_perlin_noise3(x.rgb_data[i] / s, y.rgb_data[i] / s, z.rgb_data[i] / s, 0, 0, 0);
-    }
-    return img;
-}, "perlin");
-static blt::gp::operation_t perlin_terminal([]() {
-    full_image_t img{};
-    for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
-    {
-        auto ctx = get_ctx(i);
-        img.rgb_data[i] =
-                stb_perlin_noise3(ctx.x / IMAGE_SIZE, ctx.y / IMAGE_SIZE, static_cast<float>(i % CHANNELS) / CHANNELS, 0, 0, 0);
-    }
-    return img;
-}, "perlin_term");
-static blt::gp::operation_t perlin_warped([](const full_image_t& u, const full_image_t& v) {
-    full_image_t img{};
-    for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
-    {
-        auto ctx = get_ctx(i);
-        img.rgb_data[i] = stb_perlin_noise3(ctx.x / IMAGE_SIZE + u.rgb_data[i], ctx.y / IMAGE_SIZE + v.rgb_data[i],
-                                             static_cast<float>(i % CHANNELS) / CHANNELS, 0, 0, 0);
-    }
-    return img;
-}, "perlin_warped");
-static blt::gp::operation_t op_img_size([]() {
-    full_image_t img{};
-    for (float& i : img.rgb_data)
-    {
-        i = IMAGE_SIZE;
-    }
-    return img;
-}, "img_size");
-static blt::gp::operation_t op_x_r([]() {
-    full_image_t img{};
-    for (blt::size_t i = 0; i < DATA_SIZE; i++)
-    {
-        auto ctx = get_ctx(i).x;
-        img.rgb_data[i * CHANNELS] = ctx;
-        img.rgb_data[i * CHANNELS + 1] = 0;
-        img.rgb_data[i * CHANNELS + 2] = 0;
-    }
-    return img;
-}, "x_r");
-static blt::gp::operation_t op_x_g([]() {
-    full_image_t img{};
-    for (blt::size_t i = 0; i < DATA_SIZE; i++)
-    {
-        auto ctx = get_ctx(i).x;
-        img.rgb_data[i * CHANNELS] = 0;
-        img.rgb_data[i * CHANNELS + 1] = ctx;
-        img.rgb_data[i * CHANNELS + 2] = 0;
-    }
-    return img;
-}, "x_g");
-static blt::gp::operation_t op_x_b([]() {
-    full_image_t img{};
-    for (blt::size_t i = 0; i < DATA_SIZE; i++)
-    {
-        auto ctx = get_ctx(i).x;
-        img.rgb_data[i * CHANNELS] = 0;
-        img.rgb_data[i * CHANNELS + 1] = 0;
-        img.rgb_data[i * CHANNELS + 2] = ctx;
-    }
-    return img;
-}, "x_b");
-static blt::gp::operation_t op_y_r([]() {
-    full_image_t img{};
-    for (blt::size_t i = 0; i < DATA_SIZE; i++)
-    {
-        auto ctx = get_ctx(i).y;
-        img.rgb_data[i * CHANNELS] = ctx;
-        img.rgb_data[i * CHANNELS + 1] = 0;
-        img.rgb_data[i * CHANNELS + 2] = 0;
-    }
-    return img;
-}, "y_r");
-static blt::gp::operation_t op_y_g([]() {
-    full_image_t img{};
-    for (blt::size_t i = 0; i < DATA_SIZE; i++)
-    {
-        auto ctx = get_ctx(i).y;
-        img.rgb_data[i * CHANNELS] = 0;
-        img.rgb_data[i * CHANNELS + 1] = ctx;
-        img.rgb_data[i * CHANNELS + 2] = 0;
-    }
-    return img;
-}, "y_g");
-static blt::gp::operation_t op_y_b([]() {
-    full_image_t img{};
-    for (blt::size_t i = 0; i < DATA_SIZE; i++)
-    {
-        auto ctx = get_ctx(i).y;
-        img.rgb_data[i * CHANNELS] = 0;
-        img.rgb_data[i * CHANNELS + 1] = 0;
-        img.rgb_data[i * CHANNELS + 2] = ctx;
-    }
-    return img;
-}, "y_b");
 
 constexpr float compare_values(float a, float b)
 {
@@ -561,39 +320,11 @@ void init(const blt::gfx::window_data&)
     
     BLT_DEBUG("Setup Types and Operators");
     type_system.register_type<full_image_t>();
+    type_system.register_type<float>();
     
     blt::gp::operator_builder<context> builder{type_system};
-    builder.add_operator(perlin);
-    builder.add_operator(perlin_terminal);
-    builder.add_operator(perlin_warped);
-    
-    builder.add_operator(add);
-    builder.add_operator(sub);
-    builder.add_operator(mul);
-    builder.add_operator(pro_div);
-    builder.add_operator(op_sin);
-    builder.add_operator(op_cos);
-    builder.add_operator(op_atan);
-    builder.add_operator(op_exp);
-    builder.add_operator(op_log);
-    builder.add_operator(op_abs);
-    builder.add_operator(op_v_mod);
-    builder.add_operator(bitwise_and);
-    builder.add_operator(bitwise_or);
-    builder.add_operator(bitwise_invert);
-    builder.add_operator(bitwise_xor);
-    builder.add_operator(dissolve);
-    builder.add_operator(hsv_to_rgb);
-    
-    builder.add_operator(lit, true);
-    builder.add_operator(random_val);
-    const bool state = false;
-    builder.add_operator(op_x_r, true);
-    builder.add_operator(op_x_g, true);
-    builder.add_operator(op_x_b, state);
-    builder.add_operator(op_y_r, state);
-    builder.add_operator(op_y_g, state);
-    builder.add_operator(op_y_b, state);
+    create_image_operations(builder);
+    create_float_operations(builder);
     
     program.set_operations(builder.build());
     
@@ -636,8 +367,9 @@ void update(const blt::gfx::window_data& data)
     const auto mouse_pos = blt::make_vec2(blt::gfx::calculateRay2D(data.width, data.height, global_matrices.getScale2D(), global_matrices.getView2D(),
                                                                    global_matrices.getOrtho()));
     
-    for (blt::size_t i = 0; i < config.population_size; i++)
+    for (blt::size_t i = 0; i < program.get_current_pop().get_individuals().size(); i++)
     {
+        auto& ind = program.get_current_pop().get_individuals()[i];
         auto ctx = get_pop_ctx(i);
         float x = ctx.x * IMAGE_SIZE + ctx.x * IMAGE_PADDING;
         float y = ctx.y * IMAGE_SIZE + ctx.y * IMAGE_PADDING;
@@ -652,7 +384,6 @@ void update(const blt::gfx::window_data& data)
             renderer_2d.drawRectangleInternal(blt::make_color(0.9, 0.9, 0.3),
                                               {x, y, IMAGE_SIZE + IMAGE_PADDING / 2.0f, IMAGE_SIZE + IMAGE_PADDING / 2.0f},
                                               10.0f);
-            auto& ind = program.get_current_pop().get_individuals()[i];
             
             auto& io = ImGui::GetIO();
             
@@ -681,8 +412,9 @@ void update(const blt::gfx::window_data& data)
             hovered_fitness_value = fitness_values[i];
         }
         
+        auto val = static_cast<float>(ind.fitness.adjusted_fitness);
         renderer_2d.drawRectangleInternal(
-                blt::make_vec4(blt::vec3(static_cast<float>(program.get_current_pop().get_individuals()[i].fitness.adjusted_fitness)), 1.0),
+                blt::make_color(val, val, val),
                 {x, y, IMAGE_SIZE + IMAGE_PADDING / 2.0f, IMAGE_SIZE + IMAGE_PADDING / 2.0f},
                 5.0f);
         

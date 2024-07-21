@@ -19,6 +19,8 @@
 #ifndef IMAGE_GP_6_HELPER_H
 #define IMAGE_GP_6_HELPER_H
 
+#include <images.h>
+
 template<typename SINGLE_FUNC>
 constexpr static auto make_single(SINGLE_FUNC&& func)
 {
@@ -39,6 +41,39 @@ constexpr static auto make_double(DOUBLE_FUNC&& func)
             img.rgb_data[i] = func(a.rgb_data[i], b.rgb_data[i]);
         return img;
     };
+}
+
+struct context
+{
+    float x, y;
+};
+
+inline context get_ctx(blt::size_t i)
+{
+    context ctx{};
+    i /= CHANNELS;
+    ctx.y = std::floor(static_cast<float>(i) / static_cast<float>(IMAGE_SIZE));
+    ctx.x = static_cast<float>(i) - (ctx.y * IMAGE_SIZE);
+    return ctx;
+}
+
+inline context get_pop_ctx(blt::size_t i)
+{
+    auto const sq = static_cast<float>(std::sqrt(POP_SIZE));
+    context ctx{};
+    ctx.y = std::floor(static_cast<float>(i) / static_cast<float>(sq));
+    ctx.x = static_cast<float>(i) - (ctx.y * sq);
+    return ctx;
+}
+
+inline blt::size_t get_index(blt::size_t x, blt::size_t y)
+{
+    return y * IMAGE_SIZE + x;
+}
+
+inline float perlin_noise(float x, float y, float z)
+{
+    return (stb_perlin_noise3(x, y, z, 0, 0, 0) + 1.0f) / 2.0f;
 }
 
 #endif //IMAGE_GP_6_HELPER_H

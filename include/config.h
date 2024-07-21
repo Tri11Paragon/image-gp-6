@@ -46,4 +46,7 @@ blt::gp::prog_config_t config = blt::gp::prog_config_t()
         .set_pop_size(POP_SIZE)
         .set_thread_count(0);
 
+inline blt::gp::type_provider type_system;
+inline blt::gp::gp_program program{type_system, SEED, config};
+
 #endif //IMAGE_GP_6_CONFIG_H
