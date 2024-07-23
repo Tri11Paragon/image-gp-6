@@ -19,23 +19,23 @@
 #ifndef IMAGE_GP_6_CONFIG_H
 #define IMAGE_GP_6_CONFIG_H
 
-constexpr size_t log2(size_t n) // NOLINT
+inline constexpr size_t log2(size_t n) // NOLINT
 {
     return ((n < 2) ? 1 : 1 + log2(n / 2));
 }
 
-static const blt::u64 SEED = std::random_device()();
-static constexpr blt::size_t IMAGE_SIZE = 128;
-static constexpr blt::size_t IMAGE_PADDING = 16;
-static constexpr blt::size_t POP_SIZE = 64;
-static constexpr blt::size_t CHANNELS = 3;
-static constexpr blt::size_t DATA_SIZE = IMAGE_SIZE * IMAGE_SIZE;
-static constexpr blt::size_t DATA_CHANNELS_SIZE = DATA_SIZE * CHANNELS;
-static constexpr blt::size_t BOX_COUNT = static_cast<blt::size_t>(log2(IMAGE_SIZE / 2));
-static constexpr float THRESHOLD = 0.3;
-static constexpr auto load_image = "../GSab4SWWcAA1TNR.png";
+inline const blt::u64 SEED = std::random_device()();
+inline constexpr blt::size_t IMAGE_SIZE = 128;
+inline constexpr blt::size_t IMAGE_PADDING = 16;
+inline constexpr blt::size_t POP_SIZE = 64;
+inline constexpr blt::size_t CHANNELS = 3;
+inline constexpr blt::size_t DATA_SIZE = IMAGE_SIZE * IMAGE_SIZE;
+inline constexpr blt::size_t DATA_CHANNELS_SIZE = DATA_SIZE * CHANNELS;
+inline constexpr blt::size_t BOX_COUNT = static_cast<blt::size_t>(log2(IMAGE_SIZE / 2));
+inline constexpr float THRESHOLD = 0.3;
+inline constexpr auto load_image = "../GSab4SWWcAA1TNR.png";
 
-blt::gp::prog_config_t config = blt::gp::prog_config_t()
+inline blt::gp::prog_config_t config = blt::gp::prog_config_t()
         .set_initial_min_tree_size(4)
         .set_initial_max_tree_size(8)
         .set_elite_count(2)
