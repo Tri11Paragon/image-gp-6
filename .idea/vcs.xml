@@ -8,6 +8,7 @@
     <mapping directory="$PROJECT_DIR$/lib/blt-gp/lib/blt/libraries/parallel-hashmap" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/lib/blt-graphics" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/lib/blt-graphics/libraries/BLT" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/lib/blt-graphics/libraries/BLT/libraries/parallel-hashmap" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/lib/blt-graphics/libraries/imgui" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/lib/blt-graphics/libraries/openal-soft" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/lib/stb" vcs="Git" />
