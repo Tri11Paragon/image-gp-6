@@ -42,10 +42,10 @@ inline blt::gp::operation_t f_literal([]() {
 template<typename context>
 void create_float_operations(blt::gp::operator_builder<context>& builder)
 {
-    builder.add_operator(f_add);
-    builder.add_operator(f_sub);
-    builder.add_operator(f_mul);
-    builder.add_operator(f_pro_div);
+//    builder.add_operator(f_add);
+//    builder.add_operator(f_sub);
+//    builder.add_operator(f_mul);
+//    builder.add_operator(f_pro_div);
     builder.add_operator(f_literal, true);
 }
 

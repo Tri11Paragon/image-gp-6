@@ -350,7 +350,7 @@ void update(const blt::gfx::window_data& data)
         {
             run_generation = true;
         }
-        ImGui::InputInt("Time Between Runs", &time_between_runs);
+        ImGui::InputInt("Time Between Runs", &time_between_runs, 16);
         ImGui::Checkbox("Run", &is_running);
         auto& stats = program.get_population_stats();
         ImGui::Text("Stats:");
@@ -451,6 +451,7 @@ int main()
     BLT_INFO("Base image values per channel: %lf", v.total);
     
     BLT_PRINT_PROFILE("Image Test", blt::PRINT_CYCLES | blt::PRINT_THREAD | blt::PRINT_WALL);
+    BLT_PRINT_PROFILE("Mutation", blt::PRINT_CYCLES | blt::PRINT_THREAD | blt::PRINT_WALL | blt::AVERAGE_HISTORY);
     
     is_running = false;
     program.kill();
