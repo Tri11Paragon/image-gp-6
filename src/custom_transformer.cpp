@@ -84,11 +84,15 @@ namespace blt::gp
                         if (node.type_size == sizeof(float))
                         {
                             auto& val = vals.from<float>(bytes_from_head);
-                            auto old = val;
                             val += f_literal.get_function()();
                             val /= 2.0f;
-                            if (std::isnan(val))
-                                val = old;
+                        } else if (node.type_size == sizeof(blt::u64)) // is u64
+                        {
+                            auto& val = vals.from<blt::u64>(bytes_from_head);
+                            if (program.get_random().choice())
+                                val = program.get_random().get_u64(val, u64_size_max);
+                            else
+                                val = program.get_random().get_u64(u64_size_min, val + 1);
                         } else // is an image
                         {
                             auto& val = vals.from<full_image_t>(bytes_from_head);
@@ -97,9 +101,10 @@ namespace blt::gp
                             
                             // Annoying. TODO: fix all of this.
                             operator_id id;
-                            do{
+                            do
+                            {
                                 id = program.get_random().select(terminals);
-                            } while(!program.is_static(id));
+                            } while (!program.is_static(id));
                             
                             stack_allocator stack;
                             
@@ -110,12 +115,9 @@ namespace blt::gp
                             
                             for (const auto& [index, value] : blt::enumerate(val.rgb_data))
                             {
-                                auto old = value;
                                 // add and normalize.
                                 value += adjustment.rgb_data[index];
                                 value /= 2.0f;
-                                if (std::isnan(value))
-                                    value = old;
                             }
                         }
                     }

@@ -42,7 +42,7 @@ blt::gfx::resource_manager resources;
 blt::gfx::batch_renderer_2d renderer_2d(resources, global_matrices);
 blt::gfx::first_person_camera_2d camera;
 
-static constexpr blt::size_t TYPE_COUNT = 2;
+static constexpr blt::size_t TYPE_COUNT = 3;
 
 std::array<double, POP_SIZE> fitness_values{};
 double last_fitness = 0;
@@ -51,6 +51,7 @@ double hovered_fitness_value = 0;
 bool evaluate = true;
 
 std::array<bool, TYPE_COUNT> has_literal_converter = {
+        true,
         true,
         true
 };
@@ -74,6 +75,16 @@ std::array<std::function<void(blt::gp::gp_program& program, void*, void*, void*,
             auto& p2_in = *static_cast<float*>(p2_in_ptr);
             auto& c1_out = *static_cast<float*>(c1_out_ptr);
             auto& c2_out = *static_cast<float*>(c2_out_ptr);
+            
+            auto diff = p1_in - p2_in;
+            c1_out = p1_in - diff;
+            c2_out = p2_in + diff;
+        },
+        [](blt::gp::gp_program&, void* p1_in_ptr, void* p2_in_ptr, void* c1_out_ptr, void* c2_out_ptr) {
+            auto& p1_in = *static_cast<blt::u64*>(p1_in_ptr);
+            auto& p2_in = *static_cast<blt::u64*>(p2_in_ptr);
+            auto& c1_out = *static_cast<blt::u64*>(c1_out_ptr);
+            auto& c2_out = *static_cast<blt::u64*>(c2_out_ptr);
             
             auto diff = p1_in - p2_in;
             c1_out = p1_in - diff;
@@ -317,6 +328,7 @@ void init(const blt::gfx::window_data&)
     BLT_DEBUG("Setup Types and Operators");
     type_system.register_type<full_image_t>();
     type_system.register_type<float>();
+    type_system.register_type<blt::u64>();
     
     blt::gp::operator_builder<context> builder{type_system};
     create_image_operations(builder);

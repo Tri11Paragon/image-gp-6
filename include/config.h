@@ -32,9 +32,8 @@ inline constexpr blt::size_t IMAGE_SIZE = 128;
 inline constexpr blt::size_t IMAGE_PADDING = 16;
 inline constexpr blt::size_t POP_SIZE = 64;
 inline constexpr blt::size_t CHANNELS = 3;
-inline constexpr blt::size_t DATA_SIZE = IMAGE_SIZE * IMAGE_SIZE;
-inline constexpr blt::size_t DATA_CHANNELS_SIZE = DATA_SIZE * CHANNELS;
-inline constexpr blt::size_t BOX_COUNT = static_cast<blt::size_t>(log2(IMAGE_SIZE / 2));
+inline constexpr blt::u64 u64_size_min = 1;
+inline constexpr blt::u64 u64_size_max = 9;
 inline constexpr float THRESHOLD = 0.3;
 inline constexpr auto load_image = "../GSab4SWWcAA1TNR.png";
 
@@ -55,6 +54,10 @@ inline blt::gp::prog_config_t config = blt::gp::prog_config_t()
         .set_reproduction_chance(0.5)
         .set_pop_size(POP_SIZE)
         .set_thread_count(0);
+
+inline constexpr blt::size_t DATA_SIZE = IMAGE_SIZE * IMAGE_SIZE;
+inline constexpr blt::size_t DATA_CHANNELS_SIZE = DATA_SIZE * CHANNELS;
+inline constexpr blt::size_t BOX_COUNT = static_cast<blt::size_t>(log2(IMAGE_SIZE / 2));
 
 inline blt::gp::type_provider type_system;
 inline blt::gp::gp_program program{type_system, SEED, config};

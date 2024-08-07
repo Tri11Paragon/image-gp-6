@@ -21,6 +21,8 @@
 #include <functional>
 #include <helper.h>
 #include <stb_perlin.h>
+#include "opencv2/imgcodecs.hpp"
+#include "opencv2/imgproc.hpp"
 
 #ifndef IMAGE_GP_6_IMAGE_OPERATIONS_H
 #define IMAGE_GP_6_IMAGE_OPERATIONS_H
@@ -44,6 +46,7 @@ inline blt::gp::operation_t op_atan(make_single((float (*)(float)) &std::atan), 
 inline blt::gp::operation_t op_exp(make_single((float (*)(float)) &std::exp), "exp");
 inline blt::gp::operation_t op_abs(make_single((float (*)(float)) &std::abs), "abs");
 inline blt::gp::operation_t op_log(make_single((float (*)(float)) &std::log), "log");
+inline blt::gp::operation_t op_round(make_single((float (*)(float)) &std::round), "round");
 inline blt::gp::operation_t op_v_mod([](const full_image_t& a, const full_image_t& b) {
     full_image_t img{};
     for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
@@ -99,28 +102,85 @@ inline blt::gp::operation_t dissolve([](const full_image_t& a, const full_image_
     return img;
 }, "dissolve");
 
-inline blt::gp::operation_t band_pass([](const full_image_t& a, float min, float max) {
-    using blt::mem::type_cast;
+inline blt::gp::operation_t band_pass([](const full_image_t& a, float fa, float fb, blt::u64 size) {
+    cv::Mat src(IMAGE_SIZE, IMAGE_SIZE, CV_32FC3, const_cast<float*>(a.rgb_data));
     full_image_t img{};
-    for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
-    {
-        if (a.rgb_data[i] >= min && a.rgb_data[i] <= max)
-        {
-            img.rgb_data[i] = a.rgb_data[i];
-        } else if (a.rgb_data[i] < min)
-        {
-            auto dist_min = min == 0 ? 0.0f : (a.rgb_data[i] / min);
-            img.rgb_data[i] = a.rgb_data[i] * dist_min;
-        } else if (a.rgb_data[i] > max)
-        {
-            auto dist_max = max == 0 ? 0.0f : ((a.rgb_data[i] - max) / max);
-            img.rgb_data[i] = a.rgb_data[i] * dist_max;
-        } else {
-            img.rgb_data[i] = 0;
-        }
-    }
+    std::memcpy(img.rgb_data, a.rgb_data, DATA_CHANNELS_SIZE * sizeof(float));
+    
+    cv::Mat dst{IMAGE_SIZE, IMAGE_SIZE, CV_32FC3, img.rgb_data};
+    if (size % 2 == 0)
+        size++;
+    
+    auto min = fa < fb ? fa : fb;
+    auto max = fa > fb ? fa : fb;
+    
+    auto low = cv::getGaussianKernel(static_cast<int>(size), min * ((static_cast<int>(size) - 1) * 0.5 - 1) + 0.8, CV_32F);
+    auto high = cv::getGaussianKernel(static_cast<int>(size), max * ((static_cast<int>(size) - 1) * 0.5 - 1) + 0.8, CV_32F);
+    
+    auto func = high - low;
+    cv::Mat funcY;
+    cv::transpose(func, funcY);
+    cv::sepFilter2D(src, dst, 3, func, funcY);
+    
     return img;
 }, "band_pass");
+
+inline blt::gp::operation_t high_pass([](const full_image_t& a, blt::u64 size) {
+    full_image_t blur{};
+    std::memcpy(blur.rgb_data, a.rgb_data, DATA_CHANNELS_SIZE * sizeof(float));
+    full_image_t base{};
+    std::memcpy(blur.rgb_data, a.rgb_data, DATA_CHANNELS_SIZE * sizeof(float));
+    full_image_t ret{};
+    
+    cv::Mat blur_mat{IMAGE_SIZE, IMAGE_SIZE, CV_32FC3, blur.rgb_data};
+    cv::Mat base_mat{IMAGE_SIZE, IMAGE_SIZE, CV_32FC3, base.rgb_data};
+    cv::Mat ret_mat{IMAGE_SIZE, IMAGE_SIZE, CV_32FC3, ret.rgb_data};
+    if (size % 2 == 0)
+        size++;
+    
+    for (blt::u64 i = 1; i < size; i += 2)
+        cv::GaussianBlur(blur_mat, blur_mat, cv::Size(static_cast<int>(i), static_cast<int>(i)), 0, 0);
+    
+    cv::subtract(base_mat, blur_mat, ret_mat);
+    
+    return ret;
+}, "high_pass");
+
+inline blt::gp::operation_t gaussian_blur([](const full_image_t& a, blt::u64 size) {
+    full_image_t img{};
+    std::memcpy(img.rgb_data, a.rgb_data, DATA_CHANNELS_SIZE * sizeof(float));
+    
+    cv::Mat dst{IMAGE_SIZE, IMAGE_SIZE, CV_32FC3, img.rgb_data};
+    if (size % 2 == 0)
+        size++;
+    
+    for (blt::u64 i = 1; i < size; i += 2)
+        cv::GaussianBlur(dst, dst, cv::Size(static_cast<int>(i), static_cast<int>(i)), 0, 0);
+    
+    return img;
+}, "gaussian_blur");
+
+inline blt::gp::operation_t median_blur([](const full_image_t& a, blt::u64 size) {
+    cv::Mat src(IMAGE_SIZE, IMAGE_SIZE, CV_32FC3, const_cast<float*>(a.rgb_data));
+    full_image_t img{};
+    cv::Mat dst{IMAGE_SIZE, IMAGE_SIZE, CV_32FC3, img.rgb_data};
+    if (size % 2 == 0)
+        size++;
+    if (size > 5)
+        size = 5;
+    cv::medianBlur(src, dst, static_cast<int>(size));
+    return img;
+}, "median_blur");
+
+inline blt::gp::operation_t bilateral_filter([](const full_image_t& a, blt::u64 size) {
+    cv::Mat src(IMAGE_SIZE, IMAGE_SIZE, CV_32FC3, const_cast<float*>(a.rgb_data));
+    full_image_t img{};
+    cv::Mat dst{IMAGE_SIZE, IMAGE_SIZE, CV_32FC3, img.rgb_data};
+    if (size % 2 == 0)
+        size++;
+    cv::bilateralFilter(src, dst, static_cast<int>(size), static_cast<int>(size) * 2, static_cast<int>(size) / 2.0);
+    return img;
+}, "bilateral_filter");
 
 inline blt::gp::operation_t hsv_to_rgb([](const full_image_t& a) {
     using blt::mem::type_cast;
@@ -316,6 +376,7 @@ void create_image_operations(blt::gp::operator_builder<context>& builder)
     builder.add_operator(op_exp);
     builder.add_operator(op_log);
     builder.add_operator(op_abs);
+    //builder.add_operator(op_round);
     builder.add_operator(op_v_mod);
     builder.add_operator(bitwise_and);
     builder.add_operator(bitwise_or);
@@ -324,6 +385,10 @@ void create_image_operations(blt::gp::operator_builder<context>& builder)
     builder.add_operator(dissolve);
     builder.add_operator(band_pass);
     builder.add_operator(hsv_to_rgb);
+    builder.add_operator(gaussian_blur);
+    builder.add_operator(median_blur);
+    builder.add_operator(bilateral_filter);
+    builder.add_operator(high_pass);
     
     bool state = false;
     builder.add_operator(lit, true);

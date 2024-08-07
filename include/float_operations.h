@@ -39,6 +39,11 @@ inline blt::gp::operation_t f_literal([]() {
     return program.get_random().get_float(0.0, 1.0);
 }, "float_lit");
 
+// used for blur size
+inline blt::gp::operation_t i_literal([]() {
+    return program.get_random().get_u64(u64_size_min, u64_size_max);
+}, "int_lit");
+
 template<typename context>
 void create_float_operations(blt::gp::operator_builder<context>& builder)
 {
@@ -47,6 +52,7 @@ void create_float_operations(blt::gp::operator_builder<context>& builder)
 //    builder.add_operator(f_mul);
 //    builder.add_operator(f_pro_div);
     builder.add_operator(f_literal, true);
+    builder.add_operator(i_literal, true);
 }
 
 #endif //IMAGE_GP_6_FLOAT_OPERATIONS_H
