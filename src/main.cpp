@@ -358,6 +358,9 @@ void update(const blt::gfx::window_data& data)
         {
             run_generation = true;
         }
+        ImGui::Button("Reset Program");
+        if (ImGui::IsItemClicked())
+            program.reset_program(type_system.get_type<full_image_t>().id(), true);
         ImGui::InputInt("Time Between Runs", &time_between_runs, 16);
         ImGui::Checkbox("Run", &is_running);
         auto& stats = program.get_population_stats();

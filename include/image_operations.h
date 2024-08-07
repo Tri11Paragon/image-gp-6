@@ -46,7 +46,7 @@ inline blt::gp::operation_t op_atan(make_single((float (*)(float)) &std::atan), 
 inline blt::gp::operation_t op_exp(make_single((float (*)(float)) &std::exp), "exp");
 inline blt::gp::operation_t op_abs(make_single((float (*)(float)) &std::abs), "abs");
 inline blt::gp::operation_t op_log(make_single((float (*)(float)) &std::log), "log");
-inline blt::gp::operation_t op_round(make_single((float (*)(float)) &std::round), "round");
+inline blt::gp::operation_t op_round(make_single([](float f) {return std::round(f * 255.0f) / 255.0f;}), "round");
 inline blt::gp::operation_t op_v_mod([](const full_image_t& a, const full_image_t& b) {
     full_image_t img{};
     for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
@@ -124,39 +124,6 @@ inline blt::gp::operation_t band_pass([](const full_image_t& a, float fa, float 
     cv::sepFilter2D(src, dst, 3, func, funcY);
     
     return img;
-//    if (hp % 2 == 0)
-//        hp++;
-//    if (lp % 2 == 0)
-//        lp++;
-//
-//    auto min = lp < hp ? lp : hp;
-//    auto max = lp > hp ? lp : hp;
-//
-//    full_image_t hp_blur{};
-//    full_image_t lp_blur{};
-//    full_image_t base{};
-//    full_image_t ret{};
-//    std::memcpy(hp_blur.rgb_data, a.rgb_data, DATA_CHANNELS_SIZE * sizeof(float));
-//    std::memcpy(lp_blur.rgb_data, a.rgb_data, DATA_CHANNELS_SIZE * sizeof(float));
-//    std::memcpy(base.rgb_data, a.rgb_data, DATA_CHANNELS_SIZE * sizeof(float));
-//
-//    cv::Mat hp_blur_mat{IMAGE_SIZE, IMAGE_SIZE, CV_32FC3, hp_blur.rgb_data};
-//    cv::Mat lp_blur_mat{IMAGE_SIZE, IMAGE_SIZE, CV_32FC3, lp_blur.rgb_data};
-//    cv::Mat base_mat{IMAGE_SIZE, IMAGE_SIZE, CV_32FC3, base.rgb_data};
-//    cv::Mat ret_mat{IMAGE_SIZE, IMAGE_SIZE, CV_32FC3, ret.rgb_data};
-//
-//    for (blt::u64 i = 1; i < min; i += 2)
-//        cv::GaussianBlur(hp_blur_mat, hp_blur_mat, cv::Size(static_cast<int>(i), static_cast<int>(i)), 0, 0);
-//    for (blt::u64 i = 1; i < max; i += 2)
-//        cv::GaussianBlur(lp_blur_mat, lp_blur_mat, cv::Size(static_cast<int>(i), static_cast<int>(i)), 0, 0);
-//
-//    const static cv::Mat half{IMAGE_SIZE, IMAGE_SIZE, CV_32FC3, 0.5f};
-//    cv::subtract(base_mat, lp_blur_mat, ret_mat);
-//    cv::add(ret_mat, half, ret_mat);
-//    cv::subtract(ret_mat, hp_blur_mat, base_mat);
-//    cv::add(base_mat, half, ret_mat);
-//
-//    return ret;
 }, "band_pass");
 
 inline blt::gp::operation_t high_pass([](const full_image_t& a, blt::u64 size) {
@@ -414,7 +381,7 @@ void create_image_operations(blt::gp::operator_builder<context>& builder)
     builder.add_operator(op_exp);
     builder.add_operator(op_log);
     builder.add_operator(op_abs);
-    //builder.add_operator(op_round);
+    builder.add_operator(op_round);
     builder.add_operator(op_v_mod);
     builder.add_operator(bitwise_and);
     builder.add_operator(bitwise_or);
