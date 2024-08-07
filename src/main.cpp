@@ -22,10 +22,6 @@
 #include <blt/std/memory_util.h>
 #include <blt/std/hashmap.h>
 #include <blt/std/time.h>
-#include <stb_image.h>
-#include <stb_image_resize2.h>
-#include <stb_image_write.h>
-#include <stb_perlin.h>
 #include <blt/gfx/window.h>
 #include "blt/gfx/renderer/resource_manager.h"
 #include "blt/gfx/renderer/batch_2d_renderer.h"

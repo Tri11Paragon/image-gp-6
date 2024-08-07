@@ -19,4 +19,80 @@
 #ifndef IMAGE_GP_6_CUSTOM_TRANSFORMER_H
 #define IMAGE_GP_6_CUSTOM_TRANSFORMER_H
 
+#include <blt/gp/transformers.h>
+
+namespace blt::gp
+{
+    template<typename T>
+    inline static constexpr double sum(const T& array)
+    {
+        double init = 0.0;
+        for (double i : array)
+            init += i;
+        return init;
+    }
+    
+    template<blt::size_t size, typename... Args>
+    static constexpr std::array<double, size> aggregate_array(Args... list)
+    {
+        std::array<double, size> data {list...};
+        auto total_prob = sum(data);
+        double sum_of_prob = 0;
+        for (auto& d : data) {
+            auto prob = d / total_prob;
+            d = prob + sum_of_prob;
+            sum_of_prob += prob;
+        }
+        return data;
+    }
+    
+    class image_crossover_t : public crossover_t
+    {
+        public:
+            image_crossover_t() = default;
+            
+            explicit image_crossover_t(const config_t& config): crossover_t(config)
+            {}
+            
+            blt::expected<result_t, error_t> apply(gp_program& program, const tree_t& p1, const tree_t& p2) final;
+    };
+    
+    class image_mutation_t : public mutation_t
+    {
+        public:
+            enum class mutation_operator : blt::i32
+            {
+                EXPRESSION,     // Generate a new random expression
+                ADJUST,         // adjust the value of the type.
+                FUNC,           // Change node into a different function. Args will be generated / removed.
+                SUB_FUNC,       // subexpression becomes argument to new random function. Other args are generated.
+                JUMP_FUNC,      // subexpression becomes this new node. Other arguments discarded.
+                COPY,           // node can become copy of another subexpression.
+                END,            // helper
+            };
+            
+            image_mutation_t() = default;
+            
+            explicit image_mutation_t(const config_t& config): mutation_t(config)
+            {}
+            
+            tree_t apply(gp_program& program, const tree_t& p) final;
+        
+        private:
+            static constexpr auto operators_size = static_cast<blt::i32>(mutation_operator::END);
+        private:
+            // this value is adjusted inversely to the size of the tree.
+            double per_node_mutation_chance = 1.0;
+            
+            static constexpr std::array<double, operators_size> mutation_operator_chances = aggregate_array<operators_size>(
+                    0.01,       // EXPRESSION
+                    0.11,       // ADJUST
+                    0.05,       // FUNC
+                    0.01,       // SUB_FUNC
+                    0.1,        // JUMP_FUNC
+                    0.05        // COPY
+            );
+    };
+}
+
 #endif //IMAGE_GP_6_CUSTOM_TRANSFORMER_H

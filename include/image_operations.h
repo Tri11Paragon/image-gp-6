@@ -16,9 +16,11 @@
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include <blt/math/vectors.h>
 #include <blt/gp/program.h>
 #include <functional>
 #include <helper.h>
+#include <stb_perlin.h>
 
 #ifndef IMAGE_GP_6_IMAGE_OPERATIONS_H
 #define IMAGE_GP_6_IMAGE_OPERATIONS_H

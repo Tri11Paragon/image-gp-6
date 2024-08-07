@@ -20,6 +20,7 @@
 #define IMAGE_GP_6_HELPER_H
 
 #include <images.h>
+#include <stb_perlin.h>
 
 template<typename SINGLE_FUNC>
 constexpr static auto make_single(SINGLE_FUNC&& func)
