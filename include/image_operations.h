@@ -102,35 +102,70 @@ inline blt::gp::operation_t dissolve([](const full_image_t& a, const full_image_
     return img;
 }, "dissolve");
 
+//inline blt::gp::operation_t band_pass([](const full_image_t& a, blt::u64 lp, blt::u64 hp) {
 inline blt::gp::operation_t band_pass([](const full_image_t& a, float fa, float fb, blt::u64 size) {
     cv::Mat src(IMAGE_SIZE, IMAGE_SIZE, CV_32FC3, const_cast<float*>(a.rgb_data));
     full_image_t img{};
     std::memcpy(img.rgb_data, a.rgb_data, DATA_CHANNELS_SIZE * sizeof(float));
-    
+
     cv::Mat dst{IMAGE_SIZE, IMAGE_SIZE, CV_32FC3, img.rgb_data};
     if (size % 2 == 0)
         size++;
-    
+
     auto min = fa < fb ? fa : fb;
     auto max = fa > fb ? fa : fb;
-    
+
     auto low = cv::getGaussianKernel(static_cast<int>(size), min * ((static_cast<int>(size) - 1) * 0.5 - 1) + 0.8, CV_32F);
     auto high = cv::getGaussianKernel(static_cast<int>(size), max * ((static_cast<int>(size) - 1) * 0.5 - 1) + 0.8, CV_32F);
-    
+
     auto func = high - low;
     cv::Mat funcY;
     cv::transpose(func, funcY);
     cv::sepFilter2D(src, dst, 3, func, funcY);
     
     return img;
+//    if (hp % 2 == 0)
+//        hp++;
+//    if (lp % 2 == 0)
+//        lp++;
+//
+//    auto min = lp < hp ? lp : hp;
+//    auto max = lp > hp ? lp : hp;
+//
+//    full_image_t hp_blur{};
+//    full_image_t lp_blur{};
+//    full_image_t base{};
+//    full_image_t ret{};
+//    std::memcpy(hp_blur.rgb_data, a.rgb_data, DATA_CHANNELS_SIZE * sizeof(float));
+//    std::memcpy(lp_blur.rgb_data, a.rgb_data, DATA_CHANNELS_SIZE * sizeof(float));
+//    std::memcpy(base.rgb_data, a.rgb_data, DATA_CHANNELS_SIZE * sizeof(float));
+//
+//    cv::Mat hp_blur_mat{IMAGE_SIZE, IMAGE_SIZE, CV_32FC3, hp_blur.rgb_data};
+//    cv::Mat lp_blur_mat{IMAGE_SIZE, IMAGE_SIZE, CV_32FC3, lp_blur.rgb_data};
+//    cv::Mat base_mat{IMAGE_SIZE, IMAGE_SIZE, CV_32FC3, base.rgb_data};
+//    cv::Mat ret_mat{IMAGE_SIZE, IMAGE_SIZE, CV_32FC3, ret.rgb_data};
+//
+//    for (blt::u64 i = 1; i < min; i += 2)
+//        cv::GaussianBlur(hp_blur_mat, hp_blur_mat, cv::Size(static_cast<int>(i), static_cast<int>(i)), 0, 0);
+//    for (blt::u64 i = 1; i < max; i += 2)
+//        cv::GaussianBlur(lp_blur_mat, lp_blur_mat, cv::Size(static_cast<int>(i), static_cast<int>(i)), 0, 0);
+//
+//    const static cv::Mat half{IMAGE_SIZE, IMAGE_SIZE, CV_32FC3, 0.5f};
+//    cv::subtract(base_mat, lp_blur_mat, ret_mat);
+//    cv::add(ret_mat, half, ret_mat);
+//    cv::subtract(ret_mat, hp_blur_mat, base_mat);
+//    cv::add(base_mat, half, ret_mat);
+//
+//    return ret;
 }, "band_pass");
 
 inline blt::gp::operation_t high_pass([](const full_image_t& a, blt::u64 size) {
     full_image_t blur{};
-    std::memcpy(blur.rgb_data, a.rgb_data, DATA_CHANNELS_SIZE * sizeof(float));
     full_image_t base{};
-    std::memcpy(blur.rgb_data, a.rgb_data, DATA_CHANNELS_SIZE * sizeof(float));
     full_image_t ret{};
+    std::memcpy(blur.rgb_data, a.rgb_data, DATA_CHANNELS_SIZE * sizeof(float));
+    std::memcpy(base.rgb_data, a.rgb_data, DATA_CHANNELS_SIZE * sizeof(float));
+    
     
     cv::Mat blur_mat{IMAGE_SIZE, IMAGE_SIZE, CV_32FC3, blur.rgb_data};
     cv::Mat base_mat{IMAGE_SIZE, IMAGE_SIZE, CV_32FC3, base.rgb_data};
@@ -141,7 +176,10 @@ inline blt::gp::operation_t high_pass([](const full_image_t& a, blt::u64 size) {
     for (blt::u64 i = 1; i < size; i += 2)
         cv::GaussianBlur(blur_mat, blur_mat, cv::Size(static_cast<int>(i), static_cast<int>(i)), 0, 0);
     
+    const static cv::Mat half{IMAGE_SIZE, IMAGE_SIZE, CV_32FC3, 0.5f};
+    
     cv::subtract(base_mat, blur_mat, ret_mat);
+    cv::add(ret_mat, half, ret_mat);
     
     return ret;
 }, "high_pass");
