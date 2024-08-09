@@ -34,7 +34,7 @@ inline constexpr blt::size_t POP_SIZE = 64;
 inline constexpr blt::size_t CHANNELS = 3;
 inline constexpr blt::u64 u64_size_min = 1;
 inline constexpr blt::u64 u64_size_max = 9;
-inline constexpr float THRESHOLD = 0.3;
+inline constexpr float THRESHOLD = 0.5;
 inline constexpr auto load_image = "../GSab4SWWcAA1TNR.png";
 
 inline blt::gp::image_crossover_t image_crossover;

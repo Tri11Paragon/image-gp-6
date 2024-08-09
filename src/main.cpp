@@ -236,7 +236,12 @@ constexpr auto create_fitness_function()
         {
             fitness.raw_fitness = 0;
             for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
-                fitness.raw_fitness += compare_values(v.rgb_data[i], base_image.rgb_data[i]);
+            {
+                auto diff = compare_values(v.rgb_data[i], base_image.rgb_data[i]);
+                fitness.raw_fitness += diff;
+                if (diff < 0.01)
+                    fitness.raw_fitness -= fitness.raw_fitness * 0.02;
+            }
             
             fitness.raw_fitness /= (IMAGE_SIZE * IMAGE_SIZE);
             auto raw = get_fractal_value(v);
