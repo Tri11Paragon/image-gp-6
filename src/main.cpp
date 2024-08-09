@@ -122,7 +122,9 @@ class image_crossover_t : public blt::gp::crossover_t
 
 std::array<full_image_t, POP_SIZE> generation_images;
 
+int match_method = cv::TM_SQDIFF;
 full_image_t base_image;
+stb_image_t full_base_image;
 blt::size_t last_run = 0;
 blt::i32 time_between_runs = 16;
 bool is_running = false;
@@ -246,6 +248,33 @@ constexpr auto create_fitness_function()
             else
                 fitness.raw_fitness += raw.total + raw.combined + 1.0;
             
+            cv::Mat base_image_large{full_base_image.get_width(), full_base_image.get_height(), CV_32FC3, full_base_image.get_data()};
+            cv::Mat templ{IMAGE_SIZE, IMAGE_SIZE, CV_32FC3, v.rgb_data};
+            cv::Mat result;
+            
+            int result_cols = base_image_large.cols - templ.cols + 1;
+            int result_rows = base_image_large.rows - templ.rows + 1;
+            
+            result.create(result_rows, result_cols, CV_32FC1);
+            
+            double minVal;
+            double maxVal;
+            cv::matchTemplate(base_image_large, templ, result, match_method);
+            
+            minMaxLoc(result, &minVal, &maxVal, nullptr, nullptr, cv::Mat());
+            
+            /// For SQDIFF and SQDIFF_NORMED, the best matches are lower values. For all the other methods, the higher the better
+            if (match_method == cv::TM_SQDIFF || match_method == cv::TM_SQDIFF_NORMED)
+            {
+                if (std::isinf(minVal) || std::isnan(minVal))
+                    minVal = 200000;
+                fitness.raw_fitness += minVal * 0.01f;
+                //BLT_TRACE("%lf, %lf", minVal, maxVal);
+            } else
+            {
+                BLT_WARN("Hello!");
+            }
+            
             fitness.raw_fitness += last_fitness;
         } else
             fitness.raw_fitness = fitness_values[index];
@@ -323,7 +352,9 @@ void init(const blt::gfx::window_data&)
     BLT_INFO("Using Seed: %ld", SEED);
     BLT_START_INTERVAL("Image Test", "Main");
     BLT_DEBUG("Setup Base Image");
-    base_image.load(load_image);
+    full_base_image.load(load_image).resize(static_cast<int>(std::max(full_base_image.get_width() / 2ul, IMAGE_SIZE)),
+                                            static_cast<int>(std::max(full_base_image.get_height() / 2ul, IMAGE_SIZE)));
+    base_image.load(full_base_image);
     
     BLT_DEBUG("Setup Types and Operators");
     type_system.register_type<full_image_t>();
@@ -457,6 +488,7 @@ int main()
     BLT_END_INTERVAL("Image Test", "Main");
     
     base_image.save("input.png");
+    full_base_image.save("full_input.png");
     
     auto v = get_fractal_value(base_image);
     BLT_INFO("Base image values per channel: %lf", v.total);

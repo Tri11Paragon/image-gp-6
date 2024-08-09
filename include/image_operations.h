@@ -222,6 +222,13 @@ inline blt::gp::operation_t hsv_to_rgb([](const full_image_t& a) {
 
 inline blt::gp::operation_t lit([]() {
     full_image_t img{};
+    auto bw = program.get_random().get_float(0.0f, 1.0f);
+    for (auto& i : img.rgb_data)
+        i = bw;
+    return img;
+}, "lit");
+inline blt::gp::operation_t vec([]() {
+    full_image_t img{};
     auto r = program.get_random().get_float(0.0f, 1.0f);
     auto g = program.get_random().get_float(0.0f, 1.0f);
     auto b = program.get_random().get_float(0.0f, 1.0f);
@@ -232,7 +239,7 @@ inline blt::gp::operation_t lit([]() {
         img.rgb_data[i * CHANNELS + 2] = b;
     }
     return img;
-}, "lit");
+}, "vec");
 inline blt::gp::operation_t random_val([]() {
     full_image_t img{};
     for (auto& i : img.rgb_data)
@@ -262,7 +269,7 @@ inline blt::gp::operation_t perlin_warped([](const full_image_t& u, const full_i
     for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
     {
         auto ctx = get_ctx(i);
-        img.rgb_data[i] = perlin_noise(ctx.x / IMAGE_SIZE + u.rgb_data[i], ctx.y / IMAGE_SIZE + v.rgb_data[i],
+        img.rgb_data[i] = perlin_noise((ctx.x + + u.rgb_data[i]) / IMAGE_SIZE, (ctx.y + v.rgb_data[i]) / IMAGE_SIZE,
                                        static_cast<float>(i % CHANNELS) / CHANNELS);
     }
     return img;
@@ -397,6 +404,7 @@ void create_image_operations(blt::gp::operator_builder<context>& builder)
     
     bool state = false;
     builder.add_operator(lit, true);
+    builder.add_operator(vec, true);
     builder.add_operator(random_val);
     builder.add_operator(op_x_r, state);
     builder.add_operator(op_x_g, state);
