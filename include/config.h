@@ -36,6 +36,8 @@ inline constexpr blt::u64 u64_size_min = 1;
 inline constexpr blt::u64 u64_size_max = 9;
 inline constexpr float THRESHOLD = 0.5;
 inline constexpr auto load_image = "../GSab4SWWcAA1TNR.png";
+//inline constexpr auto load_image = "../hannah.png";
+inline constexpr blt::size_t MAX_ARG_C = 8;
 
 inline blt::gp::image_crossover_t image_crossover;
 inline blt::gp::image_mutation_t image_mutation;

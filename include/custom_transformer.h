@@ -63,8 +63,8 @@ namespace blt::gp
             enum class mutation_operator : blt::i32
             {
                 EXPRESSION,     // Generate a new random expression
-                ADJUST,         // adjust the value of the type.
-                FUNC,           // Change node into a different function. Args will be generated / removed.
+                ADJUST,         // adjust the value of the type. (if it is a function it will mutate it to a different one)
+                //FUNC,           // Change node into a different function. Args will be generated / removed.
                 SUB_FUNC,       // subexpression becomes argument to new random function. Other args are generated.
                 JUMP_FUNC,      // subexpression becomes this new node. Other arguments discarded.
                 COPY,           // node can become copy of another subexpression.
@@ -87,7 +87,7 @@ namespace blt::gp
             static constexpr std::array<double, operators_size> mutation_operator_chances = aggregate_array<operators_size>(
                     0.01,       // EXPRESSION
                     0.11,       // ADJUST
-                    0.05,       // FUNC
+                    //0.05,       // FUNC
                     0.01,       // SUB_FUNC
                     0.1,        // JUMP_FUNC
                     0.05        // COPY

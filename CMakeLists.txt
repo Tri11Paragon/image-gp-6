@@ -1,27 +1,35 @@
 cmake_minimum_required(VERSION 3.25)
-project(image-gp-6 VERSION 0.0.27)
+project(image-gp-6 VERSION 0.0.28)
 
 include(FetchContent)
 
 option(ENABLE_ADDRSAN "Enable the address sanitizer" OFF)
 option(ENABLE_UBSAN "Enable the ub sanitizer" OFF)
 option(ENABLE_TSAN "Enable the thread data race sanitizer" OFF)
+option(ENABLE_NATIVE_SSE "Enable native ASM generation" ON)
+option(DEBUG_LEVEL "Enable debug features which prints extra information to the console, might slow processing down. [0, 3)" 0)
+
+if (${ENABLE_NATIVE_SSE})
+    add_compile_options(-march=native)
+endif ()
 
 set(CMAKE_CXX_STANDARD 17)
 
 add_subdirectory(lib/blt-gp)
 add_subdirectory(lib/blt-graphics)
 
-find_package( OpenCV REQUIRED )
+find_package(OpenCV REQUIRED)
 
 include_directories(include/)
 include_directories(lib/stb)
 include_directories(lib/ThreatExchange)
-include_directories( ${OpenCV_INCLUDE_DIRS} )
+include_directories(${OpenCV_INCLUDE_DIRS})
 
 file(GLOB_RECURSE PROJECT_BUILD_FILES "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
 
 add_executable(image-gp-6 ${PROJECT_BUILD_FILES})
+
+target_compile_definitions(image-gp-6 PRIVATE BLT_DEBUG_LEVEL=${DEBUG_LEVEL})
 
 target_compile_options(image-gp-6 PRIVATE -Wall -Wextra -Wpedantic -Wno-comment)
 target_link_options(image-gp-6 PRIVATE -Wall -Wextra -Wpedantic -Wno-comment)
