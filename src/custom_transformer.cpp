@@ -253,7 +253,6 @@ namespace blt::gp
                             // not enough args
                             blt::size_t total_bytes_after = 0;
                             blt::size_t start_index = c_node + 1;
-                            blt::size_t insert_index = c_node + 1;
                             //if (current_func_info.argc.argc != 0)
                             //    start_index = children_data.back().end;
                             for (blt::size_t i = start_index; i < ops.size(); i++)
@@ -287,13 +286,12 @@ namespace blt::gp
                                 ops.insert(ops.begin() + static_cast<blt::ptrdiff_t>(start_index), tree.get_operations().begin(),
                                            tree.get_operations().end());
                                 start_index += tree.get_operations().size();
-                                insert_index += tree.get_operations().size();
                             }
                             vals.copy_from(data, total_bytes_after);
                         }
                         // now finally update the type.
                         ops[c_node] = {replacement_func_info.function, program.get_typesystem().get_type(replacement_func_info.return_type).size(),
-                                       random_replacement, false};
+                                       random_replacement, program.is_static(random_replacement)};
                     } else
                     {
                         blt::size_t bytes_from_head = 0;

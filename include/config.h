@@ -27,7 +27,7 @@ inline constexpr size_t log2(size_t n) // NOLINT
 }
 
 inline const blt::u64 SEED = std::random_device()();
-//inline const blt::u64 SEED = 553372510;
+//inline const blt::u64 SEED = 125003014;
 inline constexpr blt::size_t IMAGE_SIZE = 128;
 inline constexpr blt::size_t IMAGE_PADDING = 16;
 inline constexpr blt::size_t POP_SIZE = 64;
