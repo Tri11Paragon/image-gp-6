@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(image-gp-6 VERSION 0.0.31)
+project(image-gp-6 VERSION 0.0.32)
 
 include(FetchContent)
 
