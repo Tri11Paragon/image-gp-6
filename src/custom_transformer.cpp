@@ -291,7 +291,7 @@ namespace blt::gp
                             
                             stack_allocator stack;
                             
-                            program.get_operator_info(id).function(nullptr, stack, stack);
+                            program.get_operator_info(id).function(nullptr, stack, stack, nullptr);
                             
                             //auto adjustment = lit.get_function()();
                             auto& adjustment = stack.from<full_image_t>(0);
