@@ -52,10 +52,10 @@ namespace blt::gp
         {
             if (!program.get_random().choice(node_mutation_chance))
                 continue;
-    
-    #if BLT_DEBUG_LEVEL >= 2
+
+#if BLT_DEBUG_LEVEL >= 2
             tree_t c_copy = c;
-    #endif
+#endif
             
             // select an operator to apply
             auto selected_point = static_cast<blt::i32>(mutation_operator::COPY);
@@ -125,7 +125,7 @@ namespace blt::gp
                             child_t next = {prev.end, c.find_endpoint(program, prev.end)};
                             children_data.push_back(next);
                         }
-                        
+
 //                        BLT_TRACE("%ld vs %ld, replacement will be size %ld", children_data.size(), current_func_info.argument_types.size(),
 //                                  replacement_func_info.argument_types.size());
                         
@@ -141,34 +141,19 @@ namespace blt::gp
                                 // TODO: new config?
                                 auto tree = config.generator.get().generate(
                                         {program, val.id, config.replacement_min_depth, config.replacement_max_depth});
-                                blt::size_t total_bytes_after = 0;
-                                blt::size_t total_bytes_for = 0;
                                 
                                 auto& child = children_data[children_data.size() - 1 - index];
-                                for (blt::ptrdiff_t i = child.start; i < child.end; i++)
-                                {
-                                    if (ops[i].is_value)
-                                        total_bytes_for += stack_allocator::aligned_size(ops[i].type_size);
-                                }
-                                for (blt::size_t i = child.end; i < ops.size(); i++)
-                                {
-                                    if (ops[i].is_value)
-                                        total_bytes_after += stack_allocator::aligned_size(ops[i].type_size);
-                                }
-                                BLT_TRACE("Removing bytes %ld, bytes after that must stay: %ld", total_bytes_for, total_bytes_after);
+                                blt::size_t total_bytes_for = c.total_value_bytes(child.start, child.end);
+                                blt::size_t total_bytes_after = c.total_value_bytes(child.end);
+//                                BLT_TRACE("Removing bytes %ld, bytes after that must stay: %ld", total_bytes_for, total_bytes_after);
                                 
                                 auto after_ptr = get_thread_pointer_for_size<struct mutation_func>(total_bytes_after);
                                 vals.copy_to(after_ptr, total_bytes_after);
                                 vals.pop_bytes(static_cast<blt::ptrdiff_t>(total_bytes_after + total_bytes_for));
                                 
-                                blt::size_t total_child_bytes = 0;
-                                for (const auto& v : tree.get_operations())
-                                {
-                                    if (v.is_value)
-                                        total_child_bytes += stack_allocator::aligned_size(v.type_size);
-                                }
+                                blt::size_t total_child_bytes = tree.total_value_bytes();
                                 
-                                BLT_TRACE("Copying %ld bytes back into stack", total_child_bytes);
+//                                BLT_TRACE("Copying %ld bytes back into stack", total_child_bytes);
                                 
                                 vals.copy_from(tree.get_values(), total_child_bytes);
                                 vals.copy_from(after_ptr, total_bytes_after);
@@ -210,7 +195,7 @@ namespace blt::gp
 #endif
                             }
                         }
-                        
+
 //                        BLT_DEBUG("Current:");
 //                        for (const auto& [index, val] : blt::enumerate(current_func_info.argument_types))
 //                            BLT_DEBUG("%ld: %s", index, std::string(program.get_typesystem().get_type(val).name()).c_str());
@@ -228,18 +213,8 @@ namespace blt::gp
 //                                                                                                                    replacement_func_info.argc.argc) - 1);
                             blt::size_t end_index = children_data[(current_func_info.argc.argc - replacement_func_info.argc.argc) - 1].end;
                             blt::size_t start_index = children_data.begin()->start;
-                            blt::size_t total_bytes_for = 0;
-                            blt::size_t total_bytes_after = 0;
-                            for (blt::size_t i = start_index; i < end_index; i++)
-                            {
-                                if (ops[i].is_value)
-                                    total_bytes_for += stack_allocator::aligned_size(ops[i].type_size);
-                            }
-                            for (blt::size_t i = end_index; i < ops.size(); i++)
-                            {
-                                if (ops[i].is_value)
-                                    total_bytes_after += stack_allocator::aligned_size(ops[i].type_size);
-                            }
+                            blt::size_t total_bytes_for = c.total_value_bytes(start_index, end_index);
+                            blt::size_t total_bytes_after = c.total_value_bytes(end_index);
                             auto* data = get_thread_pointer_for_size<struct mutation_func>(total_bytes_after);
                             vals.copy_to(data, total_bytes_after);
                             vals.pop_bytes(static_cast<blt::ptrdiff_t>(total_bytes_after + total_bytes_for));
@@ -254,15 +229,10 @@ namespace blt::gp
                         {
 //                            BLT_TRACE("NOT ENOUGH ARGS");
                             // not enough args
-                            blt::size_t total_bytes_after = 0;
                             blt::size_t start_index = c_node + 1;
+                            blt::size_t total_bytes_after = c.total_value_bytes(start_index);
                             //if (current_func_info.argc.argc != 0)
                             //    start_index = children_data.back().end;
-                            for (blt::size_t i = start_index; i < ops.size(); i++)
-                            {
-                                if (ops[i].is_value)
-                                    total_bytes_after += stack_allocator::aligned_size(ops[i].type_size);
-                            }
 //                            BLT_TRACE("Total bytes after: %ld", total_bytes_after);
                             auto* data = get_thread_pointer_for_size<struct mutation_func>(total_bytes_after);
                             vals.copy_to(data, total_bytes_after);
@@ -276,12 +246,7 @@ namespace blt::gp
                                 auto tree = config.generator.get().generate(
                                         {program, replacement_func_info.argument_types[i].id, config.replacement_min_depth,
                                          config.replacement_max_depth});
-                                blt::size_t total_bytes_for = 0;
-                                for (const auto& op : tree.get_operations())
-                                {
-                                    if (op.is_value)
-                                        total_bytes_for += stack_allocator::aligned_size(op.type_size);
-                                }
+                                blt::size_t total_bytes_for = tree.total_value_bytes();
                                 vals.copy_from(tree.get_values(), total_bytes_for);
 //                                BLT_TRACE("%ld vs %ld", start_index, ops.size());
 //                                if (start_index < ops.size())
@@ -297,9 +262,7 @@ namespace blt::gp
                                        random_replacement, program.is_static(random_replacement)};
                     } else
                     {
-                        blt::size_t bytes_from_head = 0;
-                        for (auto it = ops.begin() + static_cast<blt::ptrdiff_t>(c_node) + 1; it != ops.end(); it++)
-                            bytes_from_head += it->is_value ? stack_allocator::aligned_size(it->type_size) : 0;
+                        blt::size_t bytes_from_head = c.total_value_bytes(c_node + 1);
                         // is a float
                         if (node.type_size == sizeof(float))
                         {
@@ -344,7 +307,7 @@ namespace blt::gp
                             BLT_ABORT("This type size doesn't exist!");
                         }
                     }
-    #if BLT_DEBUG_LEVEL >= 2
+#if BLT_DEBUG_LEVEL >= 2
                     if (!c.check(program, nullptr))
                     {
                         std::cout << "Parent: " << std::endl;
@@ -354,10 +317,42 @@ namespace blt::gp
                         std::cout << std::endl;
                         BLT_ABORT("Tree Check Failed.");
                     }
-    #endif
+#endif
                 }
                     break;
                 case mutation_operator::SUB_FUNC:
+                {
+                    BLT_TRACE(ops[c_node].id);
+                    BLT_TRACE(std::string(*program.get_name(ops[c_node].id)).c_str());
+                    auto& current_func_info = program.get_operator_info(ops[c_node].id);
+
+                    // need to:
+                    // mutate the current function.
+                    // current function is moved to one of the arguments.
+                    // other arguments are generated.
+
+                    // get a replacement which returns the same type.
+                    operator_id random_replacement = program.get_random().select(program.get_type_non_terminals(current_func_info.return_type.id));
+                    blt::size_t arg_position = 0;
+                    do
+                    {
+                        auto& replacement_func_info = program.get_operator_info(random_replacement);
+                        for (const auto& [index, v] : blt::enumerate(replacement_func_info.argument_types))
+                        {
+                            if (v.id == current_func_info.return_type.id)
+                            {
+                                arg_position = index;
+                                goto exit;
+                            }
+                        }
+                        random_replacement = program.get_random().select(program.get_type_non_terminals(current_func_info.return_type.id));
+                    } while (true);
+                exit:
+                    auto& replacement_func_info = program.get_operator_info(random_replacement);
+                    // replacement function should be valid. let's make a copy of us.
+                    blt::size_t for_bytes = 0;
+                    blt::size_t after_bytes = 0;
+                }
                     break;
                 case mutation_operator::JUMP_FUNC:
                     break;
