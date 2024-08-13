@@ -332,7 +332,10 @@ namespace blt::gp
                     // other arguments are generated.
 
                     // get a replacement which returns the same type.
-                    operator_id random_replacement = program.get_random().select(program.get_type_non_terminals(current_func_info.return_type.id));
+                    auto& non_terminals = program.get_type_non_terminals(current_func_info.return_type.id);
+                    if (non_terminals.empty())
+                        continue;
+                    operator_id random_replacement = program.get_random().select(non_terminals);
                     blt::size_t arg_position = 0;
                     do
                     {
@@ -350,8 +353,11 @@ namespace blt::gp
                 exit:
                     auto& replacement_func_info = program.get_operator_info(random_replacement);
                     // replacement function should be valid. let's make a copy of us.
-                    blt::size_t for_bytes = 0;
-                    blt::size_t after_bytes = 0;
+                    auto current_end = c.find_endpoint(program, static_cast<blt::ptrdiff_t>(c_node));
+                    blt::size_t for_bytes = c.total_value_bytes(c_node, current_end);
+                    blt::size_t after_bytes = c.total_value_bytes(current_end);
+                    
+                    auto after_data =
                 }
                     break;
                 case mutation_operator::JUMP_FUNC:
