@@ -376,7 +376,9 @@ namespace blt::gp
                     break;
                 case mutation_operator::JUMP_FUNC:
                 {
-                
+                    c.print(program, std::cout, false, true);
+                    auto parent = c.find_parent(program, static_cast<blt::ptrdiff_t>(c_node));
+                    BLT_TRACE_STREAM << "Found Parent: " << *program.get_name(ops[parent].id) << " for child " << *program.get_name(ops[c_node].id) << "\n";
                 }break;
                 case mutation_operator::COPY:
                     break;
