@@ -90,7 +90,6 @@ namespace blt::gp
                     const auto& node = ops[c_node];
                     if (!node.is_value)
                     {
-//                        BLT_TRACE("Running adjust on function");
                         auto& current_func_info = program.get_operator_info(ops[c_node].id);
                         operator_id random_replacement = program.get_random().select(
                                 program.get_type_non_terminals(current_func_info.return_type.id));
@@ -113,7 +112,6 @@ namespace blt::gp
                             child_t prev{};
                             if (current_point == 0)
                             {
-//                                BLT_TRACE("Child %ld: %s", current_point, std::string(*program.get_name(ops[c_node + 1].id)).c_str());
                                 // first child.
                                 prev = {static_cast<blt::ptrdiff_t>(c_node + 1),
                                         c.find_endpoint(program, static_cast<blt::ptrdiff_t>(c_node + 1))};
@@ -121,23 +119,15 @@ namespace blt::gp
                                 continue;
                             } else
                                 prev = children_data[current_point - 1];
-//                            BLT_TRACE("Child %ld: %s", current_point, std::string(*program.get_name(ops[prev.end].id)).c_str());
                             child_t next = {prev.end, c.find_endpoint(program, prev.end)};
                             children_data.push_back(next);
                         }
-
-//                        BLT_TRACE("%ld vs %ld, replacement will be size %ld", children_data.size(), current_func_info.argument_types.size(),
-//                                  replacement_func_info.argument_types.size());
                         
                         for (const auto& [index, val] : blt::enumerate(replacement_func_info.argument_types))
                         {
                             // need to generate replacement.
                             if (index < current_func_info.argument_types.size() && val.id != current_func_info.argument_types[index].id)
                             {
-//                                BLT_TRACE_STREAM << "Replacing tree argument (index: " << index << " proper: " << (children_data.size() - 1 - index)
-//                                                 << ") from type "
-//                                                 << program.get_typesystem().get_type(current_func_info.argument_types[index]).name() << " to type "
-//                                                 << program.get_typesystem().get_type(val).name() << "\n";
                                 // TODO: new config?
                                 auto tree = config.generator.get().generate(
                                         {program, val.id, config.replacement_min_depth, config.replacement_max_depth});
@@ -145,15 +135,12 @@ namespace blt::gp
                                 auto& child = children_data[children_data.size() - 1 - index];
                                 blt::size_t total_bytes_for = c.total_value_bytes(child.start, child.end);
                                 blt::size_t total_bytes_after = c.total_value_bytes(child.end);
-//                                BLT_TRACE("Removing bytes %ld, bytes after that must stay: %ld", total_bytes_for, total_bytes_after);
                                 
                                 auto after_ptr = get_thread_pointer_for_size<struct mutation_func>(total_bytes_after);
                                 vals.copy_to(after_ptr, total_bytes_after);
                                 vals.pop_bytes(static_cast<blt::ptrdiff_t>(total_bytes_after + total_bytes_for));
                                 
                                 blt::size_t total_child_bytes = tree.total_value_bytes();
-                                
-//                                BLT_TRACE("Copying %ld bytes back into stack", total_child_bytes);
                                 
                                 vals.copy_from(tree.get_values(), total_child_bytes);
                                 vals.copy_from(after_ptr, total_bytes_after);
@@ -195,22 +182,9 @@ namespace blt::gp
 #endif
                             }
                         }
-
-//                        BLT_DEBUG("Current:");
-//                        for (const auto& [index, val] : blt::enumerate(current_func_info.argument_types))
-//                            BLT_DEBUG("%ld: %s", index, std::string(program.get_typesystem().get_type(val).name()).c_str());
-//
-//                        BLT_DEBUG("Replacement:");
-//                        for (const auto& [index, val] : blt::enumerate(replacement_func_info.argument_types))
-//                            BLT_DEBUG("%ld: %s", index, std::string(program.get_typesystem().get_type(val).name()).c_str());
                         
                         if (current_func_info.argc.argc > replacement_func_info.argc.argc)
                         {
-//                            BLT_TRACE("TOO MANY ARGS");
-                            // too many args
-//                            BLT_TRACE("Removing %s starting index 0 to %ld",
-//                                      std::string(*program.get_name(ops[children_data.front().start].id)).c_str(), (current_func_info.argc.argc -
-//                                                                                                                    replacement_func_info.argc.argc) - 1);
                             blt::size_t end_index = children_data[(current_func_info.argc.argc - replacement_func_info.argc.argc) - 1].end;
                             blt::size_t start_index = children_data.begin()->start;
                             blt::size_t total_bytes_for = c.total_value_bytes(start_index, end_index);
@@ -222,18 +196,13 @@ namespace blt::gp
                             ops.erase(ops.begin() + static_cast<blt::ptrdiff_t>(start_index), ops.begin() + static_cast<blt::ptrdiff_t>(end_index));
                         } else if (current_func_info.argc.argc == replacement_func_info.argc.argc)
                         {
-//                            BLT_TRACE("JUST ENOUGH ARGS");
                             // exactly enough args
                             // return types should have been replaced if needed. this part should do nothing?
                         } else
                         {
-//                            BLT_TRACE("NOT ENOUGH ARGS");
                             // not enough args
                             blt::size_t start_index = c_node + 1;
                             blt::size_t total_bytes_after = c.total_value_bytes(start_index);
-                            //if (current_func_info.argc.argc != 0)
-                            //    start_index = children_data.back().end;
-//                            BLT_TRACE("Total bytes after: %ld", total_bytes_after);
                             auto* data = get_thread_pointer_for_size<struct mutation_func>(total_bytes_after);
                             vals.copy_to(data, total_bytes_after);
                             vals.pop_bytes(static_cast<blt::ptrdiff_t>(total_bytes_after));
@@ -241,16 +210,11 @@ namespace blt::gp
                             for (blt::ptrdiff_t i = static_cast<blt::ptrdiff_t>(replacement_func_info.argc.argc) - 1;
                                  i >= current_func_info.argc.argc; i--)
                             {
-//                                BLT_TRACE("Generating argument %ld of type %s", i,
-//                                          std::string(program.get_typesystem().get_type(replacement_func_info.argument_types[i].id).name()).c_str());
                                 auto tree = config.generator.get().generate(
                                         {program, replacement_func_info.argument_types[i].id, config.replacement_min_depth,
                                          config.replacement_max_depth});
                                 blt::size_t total_bytes_for = tree.total_value_bytes();
                                 vals.copy_from(tree.get_values(), total_bytes_for);
-//                                BLT_TRACE("%ld vs %ld", start_index, ops.size());
-//                                if (start_index < ops.size())
-//                                    BLT_TRACE("Argument %ld insert before this: %s", i, std::string(*program.get_name(ops[start_index].id)).c_str());
                                 ops.insert(ops.begin() + static_cast<blt::ptrdiff_t>(start_index), tree.get_operations().begin(),
                                            tree.get_operations().end());
                                 start_index += tree.get_operations().size();
@@ -325,12 +289,12 @@ namespace blt::gp
                     BLT_TRACE(ops[c_node].id);
                     BLT_TRACE(std::string(*program.get_name(ops[c_node].id)).c_str());
                     auto& current_func_info = program.get_operator_info(ops[c_node].id);
-
+                    
                     // need to:
                     // mutate the current function.
                     // current function is moved to one of the arguments.
                     // other arguments are generated.
-
+                    
                     // get a replacement which returns the same type.
                     auto& non_terminals = program.get_type_non_terminals(current_func_info.return_type.id);
                     if (non_terminals.empty())
@@ -352,16 +316,68 @@ namespace blt::gp
                     } while (true);
                 exit:
                     auto& replacement_func_info = program.get_operator_info(random_replacement);
+                    auto new_argc = replacement_func_info.argc.argc;
                     // replacement function should be valid. let's make a copy of us.
                     auto current_end = c.find_endpoint(program, static_cast<blt::ptrdiff_t>(c_node));
                     blt::size_t for_bytes = c.total_value_bytes(c_node, current_end);
                     blt::size_t after_bytes = c.total_value_bytes(current_end);
+                    auto size = current_end - c_node;
                     
-                    auto after_data =
+                    auto combined_ptr = get_thread_pointer_for_size<struct SUB_FUNC_FOR>(for_bytes + after_bytes);
+                    
+                    vals.copy_to(combined_ptr, for_bytes + after_bytes);
+                    vals.pop_bytes(static_cast<blt::ptrdiff_t>(for_bytes + after_bytes));
+                    
+                    blt::size_t start_index = c_node;
+                    for (blt::ptrdiff_t i = new_argc - 1; i > static_cast<blt::ptrdiff_t>(arg_position); i--)
+                    {
+                        auto tree = config.generator.get().generate(
+                                {program, replacement_func_info.argument_types[i].id, config.replacement_min_depth,
+                                 config.replacement_max_depth});
+                        blt::size_t total_bytes_for = tree.total_value_bytes();
+                        vals.copy_from(tree.get_values(), total_bytes_for);
+                        ops.insert(ops.begin() + static_cast<blt::ptrdiff_t>(start_index), tree.get_operations().begin(),
+                                   tree.get_operations().end());
+                        start_index += tree.get_operations().size();
+                    }
+                    start_index += size;
+                    vals.copy_from(combined_ptr, for_bytes);
+                    for (blt::ptrdiff_t i = static_cast<blt::ptrdiff_t>(arg_position) - 1; i >= 0; i--)
+                    {
+                        auto tree = config.generator.get().generate(
+                                {program, replacement_func_info.argument_types[i].id, config.replacement_min_depth,
+                                 config.replacement_max_depth});
+                        blt::size_t total_bytes_for = tree.total_value_bytes();
+                        vals.copy_from(tree.get_values(), total_bytes_for);
+                        ops.insert(ops.begin() + static_cast<blt::ptrdiff_t>(start_index), tree.get_operations().begin(),
+                                   tree.get_operations().end());
+                        start_index += tree.get_operations().size();
+                    }
+                    vals.copy_from(combined_ptr + for_bytes, after_bytes);
+                    
+                    ops.insert(ops.begin() + static_cast<blt::ptrdiff_t>(c_node),
+                               {replacement_func_info.function, program.get_typesystem().get_type(replacement_func_info.return_type).size(),
+                                random_replacement, program.is_static(random_replacement)});
+    
+    #if BLT_DEBUG_LEVEL >= 2
+                    if (!c.check(program, nullptr))
+                    {
+                        std::cout << "Parent: " << std::endl;
+                        p.print(program, std::cout, false, true);
+                        std::cout << "Child:" << std::endl;
+                        c.print(program, std::cout, false, true);
+                        std::cout << "Child Values:" << std::endl;
+                        c.print(program, std::cout, true, true);
+                        std::cout << std::endl;
+                        BLT_ABORT("Tree Check Failed.");
+                    }
+    #endif
                 }
                     break;
                 case mutation_operator::JUMP_FUNC:
-                    break;
+                {
+                
+                }break;
                 case mutation_operator::COPY:
                     break;
                 case mutation_operator::END:
