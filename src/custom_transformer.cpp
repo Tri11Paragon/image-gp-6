@@ -23,7 +23,6 @@
 
 namespace blt::gp
 {
-    
     template<typename>
     static blt::u8* get_thread_pointer_for_size(blt::size_t bytes)
     {
@@ -46,10 +45,9 @@ namespace blt::gp
         auto& ops = c.get_operations();
         auto& vals = c.get_values();
         
-        double node_mutation_chance = per_node_mutation_chance * (1.0 / static_cast<double>(ops.size()));
-        
         for (blt::size_t c_node = 0; c_node < ops.size(); c_node++)
         {
+            double node_mutation_chance = per_node_mutation_chance / static_cast<double>(ops.size());
             if (!program.get_random().choice(node_mutation_chance))
                 continue;
 
@@ -95,33 +93,11 @@ namespace blt::gp
                                 program.get_type_non_terminals(current_func_info.return_type.id));
                         auto& replacement_func_info = program.get_operator_info(random_replacement);
                         
-                        struct child_t
-                        {
-                            blt::ptrdiff_t start;
-                            // one past the end
-                            blt::ptrdiff_t end;
-                        };
-                        
                         // cache memory used for offset data.
-                        thread_local static std::vector<child_t> children_data;
+                        thread_local static std::vector<tree_t::child_t> children_data;
                         children_data.clear();
                         
-                        while (children_data.size() < current_func_info.argument_types.size())
-                        {
-                            auto current_point = children_data.size();
-                            child_t prev{};
-                            if (current_point == 0)
-                            {
-                                // first child.
-                                prev = {static_cast<blt::ptrdiff_t>(c_node + 1),
-                                        c.find_endpoint(program, static_cast<blt::ptrdiff_t>(c_node + 1))};
-                                children_data.push_back(prev);
-                                continue;
-                            } else
-                                prev = children_data[current_point - 1];
-                            child_t next = {prev.end, c.find_endpoint(program, prev.end)};
-                            children_data.push_back(next);
-                        }
+                        c.find_child_extends(program, children_data, c_node, current_func_info.argument_types.size());
                         
                         for (const auto& [index, val] : blt::enumerate(replacement_func_info.argument_types))
                         {
@@ -286,8 +262,6 @@ namespace blt::gp
                     break;
                 case mutation_operator::SUB_FUNC:
                 {
-                    BLT_TRACE(ops[c_node].id);
-                    BLT_TRACE(std::string(*program.get_name(ops[c_node].id)).c_str());
                     auto& current_func_info = program.get_operator_info(ops[c_node].id);
                     
                     // need to:
@@ -358,8 +332,8 @@ namespace blt::gp
                     ops.insert(ops.begin() + static_cast<blt::ptrdiff_t>(c_node),
                                {replacement_func_info.function, program.get_typesystem().get_type(replacement_func_info.return_type).size(),
                                 random_replacement, program.is_static(random_replacement)});
-    
-    #if BLT_DEBUG_LEVEL >= 2
+
+#if BLT_DEBUG_LEVEL >= 2
                     if (!c.check(program, nullptr))
                     {
                         std::cout << "Parent: " << std::endl;
@@ -371,16 +345,145 @@ namespace blt::gp
                         std::cout << std::endl;
                         BLT_ABORT("Tree Check Failed.");
                     }
-    #endif
+#endif
                 }
                     break;
                 case mutation_operator::JUMP_FUNC:
                 {
-                    c.print(program, std::cout, false, true);
-                    auto parent = c.find_parent(program, static_cast<blt::ptrdiff_t>(c_node));
-                    BLT_TRACE_STREAM << "Found Parent: " << *program.get_name(ops[parent].id) << " for child " << *program.get_name(ops[c_node].id) << "\n";
-                }break;
+                    auto& info = program.get_operator_info(ops[c_node].id);
+                    blt::size_t argument_index = -1ul;
+                    for (const auto& [index, v] : blt::enumerate(info.argument_types))
+                    {
+                        if (v.id == info.return_type.id)
+                        {
+                            argument_index = index;
+                            break;
+                        }
+                    }
+                    if (argument_index == -1ul)
+                        continue;
+                    
+                    static thread_local std::vector<tree_t::child_t> child_data;
+                    child_data.clear();
+                    
+                    c.find_child_extends(program, child_data, c_node, info.argument_types.size());
+                    
+                    auto child_index = child_data.size() - 1 - argument_index;
+                    auto child = child_data[child_index];
+                    auto for_bytes = c.total_value_bytes(child.start, child.end);
+                    auto after_bytes = c.total_value_bytes(child_data.back().end);
+                    
+                    auto storage_ptr = get_thread_pointer_for_size<struct jump_func>(for_bytes + after_bytes);
+                    vals.copy_to(storage_ptr + for_bytes, after_bytes);
+                    vals.pop_bytes(static_cast<blt::ptrdiff_t>(after_bytes));
+                    
+                    for (auto i = static_cast<blt::ptrdiff_t>(child_data.size() - 1); i > static_cast<blt::ptrdiff_t>(child_index); i--)
+                    {
+                        auto& cc = child_data[i];
+                        auto bytes = c.total_value_bytes(cc.start, cc.end);
+                        vals.pop_bytes(static_cast<blt::ptrdiff_t>(bytes));
+                        ops.erase(ops.begin() + cc.start, ops.begin() + cc.end);
+                    }
+                    vals.copy_to(storage_ptr, for_bytes);
+                    vals.pop_bytes(static_cast<blt::ptrdiff_t>(for_bytes));
+                    for (auto i = static_cast<blt::ptrdiff_t>(child_index - 1); i >= 0; i--)
+                    {
+                        auto& cc = child_data[i];
+                        auto bytes = c.total_value_bytes(cc.start, cc.end);
+                        vals.pop_bytes(static_cast<blt::ptrdiff_t>(bytes));
+                        ops.erase(ops.begin() + cc.start, ops.begin() + cc.end);
+                    }
+                    ops.erase(ops.begin() + static_cast<blt::ptrdiff_t>(c_node));
+                    vals.copy_from(storage_ptr, for_bytes + after_bytes);
+
+#if BLT_DEBUG_LEVEL >= 2
+                    if (!c.check(program, nullptr))
+                    {
+                        std::cout << "Parent: " << std::endl;
+                        p.print(program, std::cout, false, true);
+                        std::cout << "Child Values:" << std::endl;
+                        c.print(program, std::cout, true, true);
+                        std::cout << std::endl;
+                        BLT_ABORT("Tree Check Failed.");
+                    }
+#endif
+                }
+                    break;
                 case mutation_operator::COPY:
+                {
+                    auto& info = program.get_operator_info(ops[c_node].id);
+                    blt::size_t pt = -1ul;
+                    blt::size_t pf = -1ul;
+                    for (const auto& [index, v] : blt::enumerate(info.argument_types))
+                    {
+                        for (blt::size_t i = index + 1; i < info.argument_types.size(); i++)
+                        {
+                            auto& v1 = info.argument_types[i];
+                            if (v == v1)
+                            {
+                                if (pt == -1ul)
+                                    pt = index;
+                                else
+                                    pf = index;
+                                break;
+                            }
+                        }
+                        if (pt != -1ul && pf != -1ul)
+                            break;
+                    }
+                    if (pt == -1ul || pf == -1ul)
+                        continue;
+                    
+                    blt::size_t from = 0;
+                    blt::size_t to = 0;
+                    
+                    if (program.get_random().choice())
+                    {
+                        from = pt;
+                        to = pf;
+                    } else
+                    {
+                        from = pf;
+                        to = pt;
+                    }
+                    
+                    static thread_local std::vector<tree_t::child_t> child_data;
+                    child_data.clear();
+                    
+                    c.find_child_extends(program, child_data, c_node, info.argument_types.size());
+                    
+                    auto from_index = child_data.size() - 1 - from;
+                    auto to_index = child_data.size() - 1 - to;
+                    auto& from_child = child_data[from_index];
+                    auto& to_child = child_data[to_index];
+                    blt::size_t from_bytes = c.total_value_bytes(from_child.start, from_child.end);
+                    blt::size_t after_from_bytes = c.total_value_bytes(from_child.end);
+                    blt::size_t to_bytes = c.total_value_bytes(to_child.start, to_child.end);
+                    blt::size_t after_to_bytes = c.total_value_bytes(to_child.end);
+                    
+                    auto after_bytes = std::max(after_from_bytes, after_to_bytes);
+                    
+                    auto from_ptr = get_thread_pointer_for_size<struct copy>(from_bytes);
+                    auto after_ptr = get_thread_pointer_for_size<struct copy_after>(after_bytes);
+                    
+                    vals.copy_to(after_ptr, after_from_bytes);
+                    vals.pop_bytes(static_cast<blt::ptrdiff_t>(after_from_bytes));
+                    vals.copy_to(from_ptr, from_bytes);
+                    vals.copy_from(after_ptr, after_from_bytes);
+                    
+                    vals.copy_to(after_ptr, after_to_bytes);
+                    vals.pop_bytes(static_cast<blt::ptrdiff_t>(after_to_bytes + to_bytes));
+                    
+                    vals.copy_from(from_ptr, from_bytes);
+                    vals.copy_from(after_ptr, after_to_bytes);
+                    
+                    static std::vector<op_container_t> op_copy;
+                    op_copy.clear();
+                    op_copy.insert(op_copy.begin(), ops.begin() + from_child.start, ops.begin() + from_child.end);
+                    
+                    ops.erase(ops.begin() + to_child.start, ops.begin() + to_child.end);
+                    ops.insert(ops.begin() + to_child.start, op_copy.begin(), op_copy.end());
+                }
                     break;
                 case mutation_operator::END:
                 default:
@@ -403,8 +506,6 @@ namespace blt::gp
             BLT_ABORT("Tree Check Failed.");
         }
 #endif
-        
-        BLT_TRACE("- - - - - - - - - Passed and finished - - - - - - - - -");
         
         return c;
     }
