@@ -187,6 +187,10 @@ inline blt::gp::operation_t bilateral_filter([](const full_image_t& a, blt::u64 
     return img;
 }, "bilateral_filter");
 
+inline blt::gp::operation_t l_system([](const full_image_t& a) {
+    return a;
+}, "l_system");
+
 inline blt::gp::operation_t hsv_to_rgb([](const full_image_t& a) {
     using blt::mem::type_cast;
     full_image_t img{};
@@ -399,6 +403,7 @@ void create_image_operations(blt::gp::operator_builder<context>& builder)
     builder.add_operator(hsv_to_rgb);
     builder.add_operator(gaussian_blur);
     builder.add_operator(median_blur);
+    builder.add_operator(l_system);
     // idk when it got enabled but this works on 4.10
 #if CV_VERSION_MAJOR >= 4 && CV_VERSION_MINOR >= 10
     builder.add_operator(bilateral_filter);

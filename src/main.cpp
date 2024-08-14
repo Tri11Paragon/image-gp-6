@@ -44,6 +44,19 @@ blt::gfx::first_person_camera_2d camera;
 
 static constexpr blt::size_t TYPE_COUNT = 3;
 
+const static int h_bins = 50, s_bins = 60;
+const static int histSize[] = {h_bins, s_bins};
+// hue varies from 0 to 179, saturation from 0 to 255
+const static float h_ranges[] = {0, 180};
+const static float s_ranges[] = {0, 256};
+const static float* ranges[] = {h_ranges, s_ranges};
+// Use the 0-th and 1-st channels
+const static int channels[] = {0, 1};
+
+float difference_weight = 0.01;
+float fractal_weight = 1;
+float histogram_weight = 2.0;
+
 std::array<double, POP_SIZE> fitness_values{};
 double last_fitness = 0;
 double hovered_fitness = 0;
@@ -108,22 +121,11 @@ std::array<std::function<void(blt::gp::gp_program& program, void*, void*)>, TYPE
         }
 };
 
-class image_crossover_t : public blt::gp::crossover_t
-{
-    public:
-        blt::expected<result_t, error_t> apply(blt::gp::gp_program& prog, const blt::gp::tree_t& p1, const blt::gp::tree_t& p2) final
-        {
-            auto sel = prog.get_random().choice();
-            if (sel)
-                return blt::gp::crossover_t::apply(prog, p1, p2);
-            std::abort();
-        }
-};
-
 std::array<full_image_t, POP_SIZE> generation_images;
 
-int match_method = cv::TM_SQDIFF;
 full_image_t base_image;
+cv::Mat hsv_base;
+cv::Mat hist_base;
 stb_image_t full_base_image;
 blt::size_t last_run = 0;
 blt::i32 time_between_runs = 16;
@@ -234,51 +236,38 @@ constexpr auto create_fitness_function()
         
         if (fitness_values[index] < 0)
         {
-            fitness.raw_fitness = 0;
+            double total_difference = 0;
             for (blt::size_t i = 0; i < DATA_CHANNELS_SIZE; i++)
             {
                 auto diff = compare_values(v.rgb_data[i], base_image.rgb_data[i]);
-                fitness.raw_fitness += diff;
+                total_difference += diff;
                 if (diff < 0.01)
-                    fitness.raw_fitness -= fitness.raw_fitness * 0.02;
+                    total_difference -= total_difference * 0.02;
             }
             
-            fitness.raw_fitness /= (IMAGE_SIZE * IMAGE_SIZE);
+            double total_fractal = 0;
             auto raw = get_fractal_value(v);
-            auto fit = std::max(0.0, 1.0 - std::abs(1.35 - raw.combined));
-            auto fit2 = std::max(0.0, 1.0 - std::abs(1.35 - raw.total));
-            //BLT_DEBUG("Fitness %lf %lf %lf || %lf => %lf (fit: %lf)", raw.r, raw.g, raw.b, raw.total, raw.combined, fit);
             if (std::isnan(raw.total) || std::isnan(raw.combined))
-                fitness.raw_fitness += 400;
+                total_fractal += 400;
             else
-                fitness.raw_fitness += raw.total + raw.combined + 1.0;
-//
-//            cv::Mat base_image_large{full_base_image.get_width(), full_base_image.get_height(), CV_32FC3, full_base_image.get_data()};
-//            cv::Mat templ{IMAGE_SIZE, IMAGE_SIZE, CV_32FC3, v.rgb_data};
-//            cv::Mat result;
-//
-//            int result_cols = base_image_large.cols - templ.cols + 1;
-//            int result_rows = base_image_large.rows - templ.rows + 1;
-//
-//            result.create(result_rows, result_cols, CV_32FC1);
-//
-//            double minVal;
-//            double maxVal;
-//            cv::matchTemplate(base_image_large, templ, result, match_method);
-//
-//            minMaxLoc(result, &minVal, &maxVal, nullptr, nullptr, cv::Mat());
-//
-//            /// For SQDIFF and SQDIFF_NORMED, the best matches are lower values. For all the other methods, the higher the better
-//            if (match_method == cv::TM_SQDIFF || match_method == cv::TM_SQDIFF_NORMED)
-//            {
-//                if (std::isinf(minVal) || std::isnan(minVal))
-//                    minVal = 200000;
-//                fitness.raw_fitness += minVal * 0.01f;
-//                //BLT_TRACE("%lf, %lf", minVal, maxVal);
-//            } else
-//            {
-//                BLT_WARN("Hello!");
-//            }
+                total_fractal += raw.total + raw.combined + 1.0;
+            
+            cv::Mat src{IMAGE_SIZE, IMAGE_SIZE, CV_32FC3, v.rgb_data};
+            cv::Mat src_hsv;
+            cv::Mat src_hist;
+            
+            cv::cvtColor(src, src_hsv, cv::COLOR_RGB2HSV);
+            calcHist(&src_hsv, 1, channels, cv::Mat(), src_hist, 2, histSize, ranges, true, false);
+            normalize(src_hist, src_hist, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
+            
+//            auto total_hist = compareHist(hist_base, src_hist, cv::HISTCMP_BHATTACHARYYA);
+            auto total_hist = compareHist(hist_base, src_hist, cv::HISTCMP_CORREL);
+            
+            fitness.raw_fitness = (total_difference * difference_weight) + (total_fractal * fractal_weight) + (total_hist * histogram_weight);
+            /*BLT_TRACE(
+                    "Normal Variants: {Difference: %lf | Fractal: %lf | Histogram: %lf } Weighted Variants: { Difference: %lf | Fractal: %lf | Histogram: %lf } Total Fitness: %lf",
+                    total_difference, total_fractal, total_hist, (total_difference * difference_weight), (total_fractal * fractal_weight),
+                    (total_hist * histogram_weight), fitness.raw_fitness);*/
             
             fitness.raw_fitness += last_fitness;
         } else
@@ -361,6 +350,12 @@ void init(const blt::gfx::window_data&)
                                             static_cast<int>(std::max(full_base_image.get_height() / 2ul, IMAGE_SIZE)));
     base_image.load(full_base_image);
     
+    cv::Mat base{IMAGE_SIZE, IMAGE_SIZE, CV_32FC3, base_image.rgb_data};
+    cv::cvtColor(base, hsv_base, cv::COLOR_RGB2HSV);
+    
+    cv::calcHist(&hsv_base, 1, channels, cv::Mat(), hist_base, 2, histSize, ranges, true, false);
+    cv::normalize(hist_base, hist_base, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
+    
     BLT_DEBUG("Setup Types and Operators");
     type_system.register_type<full_image_t>();
     type_system.register_type<float>();
@@ -399,6 +394,31 @@ void update(const blt::gfx::window_data& data)
             program.reset_program(type_system.get_type<full_image_t>().id(), true);
         ImGui::InputInt("Time Between Runs", &time_between_runs, 16);
         ImGui::Checkbox("Run", &is_running);
+        
+        ImGui::Separator();
+        
+        static float difference_min = 0.001, difference_max = 1;
+        static float fractal_min = 0.1, fractal_max = 2.0;
+        static float hist_min = 0.1, hist_max = 5.0;
+        
+        ImGui::InputFloat("Difference Min", &difference_min, difference_min / 2.0f);
+        ImGui::SameLine();
+        ImGui::InputFloat("Difference Max", &difference_max, difference_max / 2.0f);
+        
+        ImGui::InputFloat("Fractal Min", &fractal_min, fractal_min / 2.0f);
+        ImGui::SameLine();
+        ImGui::InputFloat("Fractal Max", &fractal_max, fractal_max / 2.0f);
+        
+        ImGui::InputFloat("Histogram Min", &hist_min, hist_min / 2.0f);
+        ImGui::SameLine();
+        ImGui::InputFloat("Histogram Max", &hist_max, hist_max / 2.0f);
+        
+        ImGui::Separator();
+        
+        ImGui::SliderFloat("Difference Weight", &difference_weight, difference_min, difference_max);
+        ImGui::SliderFloat("Fractal Weight", &fractal_weight, fractal_min, fractal_max);
+        ImGui::SliderFloat("Hist Weight", &histogram_weight, hist_min, hist_max);
+        
         auto& stats = program.get_population_stats();
         ImGui::Text("Stats:");
         ImGui::Text("Average fitness: %lf", stats.average_fitness.load());
