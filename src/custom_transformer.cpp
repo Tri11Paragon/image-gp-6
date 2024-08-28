@@ -23,6 +23,13 @@
 
 namespace blt::gp
 {
+    inline tree_t& get_static_tree_tl(gp_program& program)
+    {
+        static thread_local tree_t new_tree{program};
+        new_tree.clear(program);
+        return new_tree;
+    }
+    
     template<typename>
     static blt::u8* get_thread_pointer_for_size(blt::size_t bytes)
     {
@@ -105,8 +112,9 @@ namespace blt::gp
                             if (index < current_func_info.argument_types.size() && val.id != current_func_info.argument_types[index].id)
                             {
                                 // TODO: new config?
-                                auto tree = config.generator.get().generate(
-                                        {program, val.id, config.replacement_min_depth, config.replacement_max_depth});
+                                auto& tree = get_static_tree_tl(program);
+                                config.generator.get().generate(tree,
+                                                                {program, val.id, config.replacement_min_depth, config.replacement_max_depth});
                                 
                                 auto& child = children_data[children_data.size() - 1 - index];
                                 blt::size_t total_bytes_for = c.total_value_bytes(child.start, child.end);
@@ -186,9 +194,10 @@ namespace blt::gp
                             for (blt::ptrdiff_t i = static_cast<blt::ptrdiff_t>(replacement_func_info.argc.argc) - 1;
                                  i >= current_func_info.argc.argc; i--)
                             {
-                                auto tree = config.generator.get().generate(
-                                        {program, replacement_func_info.argument_types[i].id, config.replacement_min_depth,
-                                         config.replacement_max_depth});
+                                auto& tree = get_static_tree_tl(program);
+                                config.generator.get().generate(tree,
+                                                                {program, replacement_func_info.argument_types[i].id, config.replacement_min_depth,
+                                                                 config.replacement_max_depth});
                                 blt::size_t total_bytes_for = tree.total_value_bytes();
                                 vals.copy_from(tree.get_values(), total_bytes_for);
                                 ops.insert(ops.begin() + static_cast<blt::ptrdiff_t>(start_index), tree.get_operations().begin(),
@@ -198,8 +207,8 @@ namespace blt::gp
                             vals.copy_from(data, total_bytes_after);
                         }
                         // now finally update the type.
-                        ops[c_node] = {replacement_func_info.function, program.get_typesystem().get_type(replacement_func_info.return_type).size(),
-                                       random_replacement, program.is_static(random_replacement)};
+                        ops[c_node] = {program.get_typesystem().get_type(replacement_func_info.return_type).size(), random_replacement,
+                                       program.is_static(random_replacement)};
                     } else
                     {
                         blt::size_t bytes_from_head = c.total_value_bytes(c_node + 1);
@@ -229,9 +238,10 @@ namespace blt::gp
                                 id = program.get_random().select(terminals);
                             } while (!program.is_static(id));
                             
-                            stack_allocator stack;
+                            static thread_local stack_allocator stack;
+                            stack.reset();
                             
-                            program.get_operator_info(id).function(nullptr, stack, stack, nullptr);
+                            program.get_operator_info(id).func(nullptr, stack, stack);
                             
                             //auto adjustment = lit.get_function()();
                             auto& adjustment = stack.from<full_image_t>(0);
@@ -305,9 +315,10 @@ namespace blt::gp
                     blt::size_t start_index = c_node;
                     for (blt::ptrdiff_t i = new_argc - 1; i > static_cast<blt::ptrdiff_t>(arg_position); i--)
                     {
-                        auto tree = config.generator.get().generate(
-                                {program, replacement_func_info.argument_types[i].id, config.replacement_min_depth,
-                                 config.replacement_max_depth});
+                        auto& tree = get_static_tree_tl(program);
+                        config.generator.get().generate(tree,
+                                                        {program, replacement_func_info.argument_types[i].id, config.replacement_min_depth,
+                                                         config.replacement_max_depth});
                         blt::size_t total_bytes_for = tree.total_value_bytes();
                         vals.copy_from(tree.get_values(), total_bytes_for);
                         ops.insert(ops.begin() + static_cast<blt::ptrdiff_t>(start_index), tree.get_operations().begin(),
@@ -318,9 +329,10 @@ namespace blt::gp
                     vals.copy_from(combined_ptr, for_bytes);
                     for (blt::ptrdiff_t i = static_cast<blt::ptrdiff_t>(arg_position) - 1; i >= 0; i--)
                     {
-                        auto tree = config.generator.get().generate(
-                                {program, replacement_func_info.argument_types[i].id, config.replacement_min_depth,
-                                 config.replacement_max_depth});
+                        auto& tree = get_static_tree_tl(program);
+                        config.generator.get().generate(tree,
+                                                        {program, replacement_func_info.argument_types[i].id, config.replacement_min_depth,
+                                                         config.replacement_max_depth});
                         blt::size_t total_bytes_for = tree.total_value_bytes();
                         vals.copy_from(tree.get_values(), total_bytes_for);
                         ops.insert(ops.begin() + static_cast<blt::ptrdiff_t>(start_index), tree.get_operations().begin(),
@@ -330,7 +342,7 @@ namespace blt::gp
                     vals.copy_from(combined_ptr + for_bytes, after_bytes);
                     
                     ops.insert(ops.begin() + static_cast<blt::ptrdiff_t>(c_node),
-                               {replacement_func_info.function, program.get_typesystem().get_type(replacement_func_info.return_type).size(),
+                               {program.get_typesystem().get_type(replacement_func_info.return_type).size(),
                                 random_replacement, program.is_static(random_replacement)});
 
 #if BLT_DEBUG_LEVEL >= 2
@@ -477,7 +489,7 @@ namespace blt::gp
                     vals.copy_from(from_ptr, from_bytes);
                     vals.copy_from(after_ptr, after_to_bytes);
                     
-                    static std::vector<op_container_t> op_copy;
+                    static thread_local std::vector<op_container_t> op_copy;
                     op_copy.clear();
                     op_copy.insert(op_copy.begin(), ops.begin() + from_child.start, ops.begin() + from_child.end);
                     

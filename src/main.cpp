@@ -259,7 +259,7 @@ constexpr auto create_fitness_function()
             cv::cvtColor(src, src_hsv, cv::COLOR_RGB2HSV);
             calcHist(&src_hsv, 1, channels, cv::Mat(), src_hist, 2, histSize, ranges, true, false);
             normalize(src_hist, src_hist, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
-            
+
 //            auto total_hist = compareHist(hist_base, src_hist, cv::HISTCMP_BHATTACHARYYA);
             auto total_hist = compareHist(hist_base, src_hist, cv::HISTCMP_CORREL);
             
@@ -286,9 +286,7 @@ void execute_generation()
     program.evaluate_fitness();
     BLT_END_INTERVAL("Image Test", "Fitness");
     BLT_START_INTERVAL("Image Test", "Gen");
-    auto sel = blt::gp::select_tournament_t{};
-//    auto sel = blt::gp::select_fitness_proportionate_t{};
-    program.create_next_generation(sel, sel, sel);
+    program.create_next_generation();
     BLT_END_INTERVAL("Image Test", "Gen");
     BLT_TRACE("Move to next generation");
     program.next_generation();
@@ -321,7 +319,9 @@ void run_gp()
 {
     BLT_DEBUG("Generate Initial Population");
     static constexpr auto fitness_func = create_fitness_function();
-    program.generate_population(type_system.get_type<full_image_t>().id(), fitness_func, true);
+    auto sel = blt::gp::select_tournament_t{};
+//    auto sel = blt::gp::select_fitness_proportionate_t{};
+    program.generate_population(type_system.get_type<full_image_t>().id(), fitness_func, sel, sel, sel);
     
     while (!program.should_thread_terminate())
     {
@@ -362,10 +362,20 @@ void init(const blt::gfx::window_data&)
     type_system.register_type<blt::u64>();
     
     blt::gp::operator_builder<context> builder{type_system};
-    create_image_operations(builder);
-    create_float_operations(builder);
+#if CV_VERSION_MAJOR >= 4 && CV_VERSION_MINOR >= 10
+    program.set_operations(
+            builder.build(perlin, perlin_terminal, perlin_warped, add, sub, mul, pro_div, op_sin, op_cos, op_atan, op_exp, op_log, op_abs, op_round,
+                          op_v_mod, bitwise_and, bitwise_or, bitwise_invert, bitwise_xor, dissolve, band_pass, hsv_to_rgb, gaussian_blur, median_blur,
+                          l_system, high_pass, bilateral_filter, lit, vec, random_val, op_x_r, op_x_g, op_x_b, op_x_rgb, op_y_r, op_y_g, op_y_b,
+                          op_y_rgb, f_literal, i_literal));
+#else
+    program.set_operations(
+            builder.build(perlin, perlin_terminal, perlin_warped, add, sub, mul, pro_div, op_sin, op_cos, op_atan, op_exp, op_log, op_abs, op_round,
+                          op_v_mod, bitwise_and, bitwise_or, bitwise_invert, bitwise_xor, dissolve, band_pass, hsv_to_rgb, gaussian_blur, median_blur,
+                          l_system, high_pass, lit, vec, random_val, op_x_r, op_x_g, op_x_b, op_x_rgb, op_y_r, op_y_g, op_y_b, op_y_rgb, f_literal,
+                          i_literal));
+#endif
     
-    program.set_operations(builder.build());
     
     global_matrices.create_internals();
     resources.load_resources();

@@ -224,14 +224,14 @@ inline blt::gp::operation_t hsv_to_rgb([](const full_image_t& a) {
     return img;
 }, "hsv");
 
-inline blt::gp::operation_t lit([]() {
+inline auto lit = blt::gp::operation_t([]() {
     full_image_t img{};
     auto bw = program.get_random().get_float(0.0f, 1.0f);
     for (auto& i : img.rgb_data)
         i = bw;
     return img;
-}, "lit");
-inline blt::gp::operation_t vec([]() {
+}, "lit").set_ephemeral();
+inline auto vec = blt::gp::operation_t([]() {
     full_image_t img{};
     auto r = program.get_random().get_float(0.0f, 1.0f);
     auto g = program.get_random().get_float(0.0f, 1.0f);
@@ -243,7 +243,7 @@ inline blt::gp::operation_t vec([]() {
         img.rgb_data[i * CHANNELS + 2] = b;
     }
     return img;
-}, "vec");
+}, "vec").set_ephemeral();
 inline blt::gp::operation_t random_val([]() {
     full_image_t img{};
     for (auto& i : img.rgb_data)
@@ -378,50 +378,9 @@ inline blt::gp::operation_t op_y_rgb([]() {
 template<typename context>
 void create_image_operations(blt::gp::operator_builder<context>& builder)
 {
-    builder.add_operator(perlin);
-    builder.add_operator(perlin_terminal);
-    builder.add_operator(perlin_warped);
     
-    builder.add_operator(add);
-    builder.add_operator(sub);
-    builder.add_operator(mul);
-    builder.add_operator(pro_div);
-    builder.add_operator(op_sin);
-    builder.add_operator(op_cos);
-    builder.add_operator(op_atan);
-    builder.add_operator(op_exp);
-    builder.add_operator(op_log);
-    builder.add_operator(op_abs);
-    builder.add_operator(op_round);
-    builder.add_operator(op_v_mod);
-    builder.add_operator(bitwise_and);
-    builder.add_operator(bitwise_or);
-    builder.add_operator(bitwise_invert);
-    builder.add_operator(bitwise_xor);
-    builder.add_operator(dissolve);
-    builder.add_operator(band_pass);
-    builder.add_operator(hsv_to_rgb);
-    builder.add_operator(gaussian_blur);
-    builder.add_operator(median_blur);
-    builder.add_operator(l_system);
     // idk when it got enabled but this works on 4.10
-#if CV_VERSION_MAJOR >= 4 && CV_VERSION_MINOR >= 10
-    builder.add_operator(bilateral_filter);
-#endif
-    builder.add_operator(high_pass);
-    
-    bool state = false;
-    builder.add_operator(lit, true);
-    builder.add_operator(vec, true);
-    builder.add_operator(random_val);
-    builder.add_operator(op_x_r, state);
-    builder.add_operator(op_x_g, state);
-    builder.add_operator(op_x_b, state);
-    builder.add_operator(op_x_rgb, state);
-    builder.add_operator(op_y_r, state);
-    builder.add_operator(op_y_g, state);
-    builder.add_operator(op_y_b, state);
-    builder.add_operator(op_y_rgb, state);
+
 }
 
 #endif //IMAGE_GP_6_IMAGE_OPERATIONS_H

@@ -35,24 +35,19 @@ inline blt::gp::operation_t f_mul([](float a, float b) {
 inline blt::gp::operation_t f_pro_div([](float a, float b) {
     return b == 0.0f ? 0.0f : (a / b);
 }, "f_div");
-inline blt::gp::operation_t f_literal([]() {
+inline auto f_literal = blt::gp::operation_t([]() {
     return program.get_random().get_float(0.0, 1.0);
-}, "float_lit");
+}, "float_lit").set_ephemeral();
 
 // used for blur size
-inline blt::gp::operation_t i_literal([]() {
+inline auto i_literal = blt::gp::operation_t([]() {
     return program.get_random().get_u64(u64_size_min, u64_size_max);
-}, "int_lit");
+}, "int_lit").set_ephemeral();
 
 template<typename context>
 void create_float_operations(blt::gp::operator_builder<context>& builder)
 {
-//    builder.add_operator(f_add);
-//    builder.add_operator(f_sub);
-//    builder.add_operator(f_mul);
-//    builder.add_operator(f_pro_div);
-    builder.add_operator(f_literal, true);
-    builder.add_operator(i_literal, true);
+
 }
 
 #endif //IMAGE_GP_6_FLOAT_OPERATIONS_H
